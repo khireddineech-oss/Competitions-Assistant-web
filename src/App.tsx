@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, UserPlus, LogOut, MessageSquare, ThumbsUp, CheckCircle, UserCheck, Trash2, Award, ChevronRight, Sliders, LayoutDashboard } from 'lucide-react';
+import { Users, UserPlus, LogOut, MessageSquare, ThumbsUp, CheckCircle, UserCheck, Trash2, Award, ChevronRight, Sliders, LayoutDashboard, ShieldAlert } from 'lucide-react';
 import { cn } from './lib/utils';
 import { User } from './types';
 
@@ -96,7 +96,7 @@ export default function App() {
   ];
 
   if (user.role === 'admin') {
-    tabs.push({ id: 'admin', label: 'المشتركين', icon: Award });
+    tabs.push({ id: 'admin', label: 'إدارة النظام', icon: ShieldAlert });
   }
 
   return (

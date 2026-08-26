@@ -55,9 +55,9 @@ export default function AdminPanel() {
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
           <Users className="w-7 h-7 text-yellow-500" />
-          المشتركين
+          إدارة النظام
         </h2>
-        <p className="text-gray-400 mt-1">التحكم في العضويات والصلاحيات</p>
+        <p className="text-gray-400 mt-1">التحكم الشامل في العضويات والصلاحيات</p>
       </div>
 
       {message && (
