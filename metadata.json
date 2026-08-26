@@ -1,0 +1,6 @@
+{
+  "name": "SocialManager",
+  "description": "A comprehensive automation platform to manage multiple connected accounts, execute automated actions, follow pages, and manage bulk interactions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
