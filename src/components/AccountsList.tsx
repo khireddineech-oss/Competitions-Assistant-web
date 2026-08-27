@@ -1,14 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Account } from '../types';
-import { Trash2, UserCircle, Share2, RefreshCw, Flag, DownloadCloud } from 'lucide-react';
+import { Trash2, Shield, Activity, Link2, Copy, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function AccountsList() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
-  const [shareUsername, setShareUsername] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
 
   const fetchAccounts = async () => {
     try {
@@ -25,203 +25,88 @@ export default function AccountsList() {
     fetchAccounts();
   }, []);
 
-  const handleDelete = async (index: number) => {
-    if (!confirm('هل أنت متأكد من حذف هذا الحساب؟')) return;
+  const handleDelete = async (id: string) => {
+    if (!confirm('هل أنت متأكد من إزالة هذه الحساب؟')) return;
     try {
-      await axios.delete(`/api/accounts/${index}`);
-      await fetchAccounts();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'فشل الحذف');
-    }
-  };
-
-  const handleClear = async () => {
-    if (!confirm('هل أنت متأكد من حذف جميع حساباتك الأصلية؟')) return;
-    try {
-      await axios.post('/api/accounts/clear');
-      await fetchAccounts();
+      await axios.delete(`/api/accounts/${id}`);
+      setAccounts(accounts.filter(a => a.id !== id));
     } catch (err) {
-      alert('فشلت العملية');
+      alert('حدث خطأ');
     }
   };
 
-  const handleRenew = async () => {
-    setActionLoading(true);
-    setMessage('جاري تجديد الجلسات...');
-    try {
-      await axios.post('/api/accounts/renew');
-      await fetchAccounts();
-      setMessage('تم تجديد الجلسات بنجاح!');
-    } catch (err) {
-      setMessage('فشل في تجديد الجلسات.');
-    } finally {
-      setActionLoading(false);
-      setTimeout(() => setMessage(''), 3000);
-    }
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleShare = async () => {
-    if (!shareUsername) return;
-    setActionLoading(true);
-    try {
-      const res = await axios.post('/api/share', { targetUsername: shareUsername });
-      setMessage(`تمت مشاركة ${res.data.count} حساب مع ${shareUsername}`);
-      setShareUsername('');
-    } catch (err: any) {
-      setMessage(err.response?.data?.error || 'فشلت المشاركة');
-    } finally {
-      setActionLoading(false);
-      setTimeout(() => setMessage(''), 3000);
-    }
-  };
-
-  const handleFetchPages = async (index: number) => {
-    setActionLoading(true);
-    try {
-      const res = await axios.post(`/api/accounts/${index}/pages`);
-      setMessage(`تم جلب ${res.data.count} صفحة بنجاح`);
-      await fetchAccounts();
-    } catch (err: any) {
-      setMessage(err.response?.data?.error || 'فشل جلب الصفحات');
-    } finally {
-      setActionLoading(false);
-      setTimeout(() => setMessage(''), 3000);
-    }
-  };
-
-  const myAccounts = accounts.filter(a => !a.shared_by && a.type !== 'page');
-  const myPages = accounts.filter(a => !a.shared_by && a.type === 'page');
-  const sharedAccounts = accounts.filter(a => a.shared_by);
-
-  if (loading) return <div className="text-gray-400">جاري تحميل الحسابات...</div>;
+  if (loading) return <div className="text-center p-12 text-slate-400">جاري تحميل الحسابات...</div>;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div>
+      <div className="mb-6 flex justify-between items-end">
         <div>
-          <h2 className="text-2xl font-bold text-white">حساباتي وصفحاتي</h2>
-          <p className="text-gray-400 mt-1">قائمة الحسابات المرتبطة</p>
+          <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+            <Link2 className="w-6 h-6 text-indigo-400" /> حساباتي
+          </h2>
+          <p className="text-slate-400">إدارة الحسابات النشطة في مساحتك</p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={handleRenew}
-            disabled={actionLoading || myAccounts.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 text-gray-200 rounded-xl hover:bg-gray-700 transition disabled:opacity-50 text-sm font-bold border border-gray-700"
-          >
-            <RefreshCw className="w-4 h-4" />
-            تجديد الجلسات
-          </button>
-          <button
-            onClick={handleClear}
-            disabled={myAccounts.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition disabled:opacity-50 text-sm font-bold"
-          >
-            <Trash2 className="w-4 h-4" />
-            حذف الكل
-          </button>
+        <div className="bg-slate-800/50 text-indigo-400 px-4 py-2 rounded-xl border border-indigo-500/20 font-bold">
+          {accounts.length} حساب
         </div>
       </div>
 
-      {message && (
-        <div className="p-4 bg-yellow-500/10 text-yellow-500 rounded-xl text-sm border border-yellow-500/20 font-medium">
-          {message}
-        </div>
-      )}
-
-      <div className="bg-gray-900 rounded-2xl shadow-xl border border-gray-800 overflow-hidden">
-        <div className="p-5 border-b border-gray-800 bg-gray-900/50 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <h3 className="font-bold text-gray-200">مشاركة الحسابات</h3>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <input
-              type="text"
-              placeholder="اسم المستخدم المستهدف"
-              value={shareUsername}
-              onChange={e => setShareUsername(e.target.value)}
-              className="flex-1 sm:w-56 px-4 py-2 bg-gray-950 border border-gray-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50"
-            />
-            <button
-              onClick={handleShare}
-              disabled={actionLoading || !shareUsername}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-xl hover:bg-yellow-500 transition disabled:opacity-50 text-sm font-bold"
-            >
-              <Share2 className="w-4 h-4" />
-              مشاركة
-            </button>
-          </div>
-        </div>
-
-        {accounts.length === 0 ? (
-          <div className="p-12 text-center text-gray-500 font-medium">
-            لم يتم إضافة أي حسابات بعد.
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-800">
-            {myAccounts.map((acc, idx) => {
-              const realIndex = accounts.indexOf(acc);
-              return (
-                <li key={idx} className="p-5 flex items-center justify-between hover:bg-gray-800/50 transition">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center">
-                      <UserCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-100">{acc.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">معرف: {acc.id}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleFetchPages(realIndex)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition text-xs font-medium border border-gray-700"
-                    >
-                      <DownloadCloud className="w-3.5 h-3.5" />
-                      جلب الصفحات
-                    </button>
-                    <button
-                      onClick={() => handleDelete(realIndex)}
-                      className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
+      <div className="grid md:grid-cols-2 gap-4">
+        {accounts.map((acc, index) => (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
+            key={acc.id} 
+            className="bg-slate-900 border border-slate-800 p-5 rounded-2xl hover:border-indigo-500/30 transition-colors shadow-lg group relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl -z-10 group-hover:bg-indigo-500/10 transition-colors"></div>
             
-            {myPages.map((acc, idx) => (
-              <li key={`page-${idx}`} className="p-5 flex items-center justify-between hover:bg-gray-800/50 transition bg-gray-900/30">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center border border-green-500/20">
-                    <Flag className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-100">{acc.name} <span className="text-xs font-normal text-green-500 mr-2 bg-green-500/10 px-2 py-0.5 rounded-md">صفحة</span></p>
-                    <p className="text-xs text-gray-500 mt-0.5">معرف: {acc.id}</p>
-                  </div>
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20">
+                  <Activity className="w-6 h-6 text-indigo-400" />
                 </div>
-                <button
-                  onClick={() => handleDelete(accounts.indexOf(acc))}
-                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </li>
-            ))}
-
-            {sharedAccounts.map((acc, idx) => (
-              <li key={`shared-${idx}`} className="p-5 flex items-center justify-between hover:bg-gray-800/50 transition bg-yellow-500/5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-yellow-500/10 text-yellow-500 rounded-full flex items-center justify-center">
-                    <Share2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-100">{acc.name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">معرف: {acc.id} • حساب مشترك</p>
-                  </div>
+                <div>
+                  <h3 className="font-bold text-white text-lg line-clamp-1" title={acc.name}>{acc.name}</h3>
+                  <p className="text-sm text-slate-400 flex items-center gap-1">
+                    {acc.type === 'page' ? 'صفحة عامة' : 'حساب شخصي'}
+                  </p>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+              <button 
+                onClick={() => handleDelete(acc.id)}
+                className="text-red-400 hover:bg-red-500/10 p-2 rounded-lg transition"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center group-hover:border-slate-700 transition-colors">
+               <div className="truncate text-xs text-slate-500 font-mono ml-2" dir="ltr">
+                  {acc.token ? acc.token.substring(0, 20) + '••••••••••' : 'لا يوجد مفتاح'}
+               </div>
+               {acc.token && (
+                 <button 
+                   onClick={() => copyToClipboard(acc.token!, acc.id)}
+                   className="text-indigo-400 hover:text-indigo-300 p-1.5 hover:bg-indigo-500/10 rounded flex-shrink-0 transition"
+                 >
+                   {copied === acc.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                 </button>
+               )}
+            </div>
+          </motion.div>
+        ))}
+        {accounts.length === 0 && (
+          <div className="col-span-full bg-slate-900 border border-slate-800 p-12 rounded-3xl text-center">
+            <Link2 className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">لا توجد قنوات متصلة</h3>
+            <p className="text-slate-400">ابدأ بربط قنواتك من خلال صفحة "ربط حساب جديدة"</p>
+          </div>
         )}
       </div>
     </div>

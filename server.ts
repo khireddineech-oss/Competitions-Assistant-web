@@ -113,6 +113,12 @@ async function initDb() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
     console.log("PostgreSQL schema validated successfully.");
   } catch (err) {
     console.error("Database initialization failed:", err);
@@ -191,7 +197,7 @@ apiRouter.post('/auth/register', async (req, res) => {
     );
 
     const user = newUsers[0];
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '365d' });
 
     res.json({ success: true, token, user });
   } catch (err) {
@@ -226,7 +232,7 @@ apiRouter.post('/auth/login', async (req, res) => {
       return res.status(403).json({ error: 'Subscription expired' });
     }
 
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '365d' });
     const { password_hash, ...safeUser } = user;
     res.json({ success: true, token, user: safeUser });
   } catch (err) {
@@ -347,10 +353,14 @@ apiRouter.post('/admin/users/:id/action', requireAuth, requireAdmin, async (req,
       await pool.query("UPDATE users SET status = 'blocked' WHERE id = $1", [userId]);
     } else if (action === 'unblock') {
       await pool.query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
+    } else if (action === 'pause') {
+      await pool.query("UPDATE users SET status = 'paused' WHERE id = $1", [userId]);
     } else if (action === 'extend' && days) {
       const ms = parseInt(days) * 24 * 60 * 60 * 1000;
-      const newDate = new Date(Date.now() + ms);
-      await pool.query("UPDATE users SET expires_at = $1 WHERE id = $2", [newDate, userId]);
+      await pool.query("UPDATE users SET expires_at = COALESCE(expires_at, NOW()) + $1 * interval '1 millisecond' WHERE id = $2", [ms, userId]);
+    } else if (action === 'reduce' && days) {
+      const ms = parseInt(days) * 24 * 60 * 60 * 1000;
+      await pool.query("UPDATE users SET expires_at = COALESCE(expires_at, NOW()) - $1 * interval '1 millisecond' WHERE id = $2", [ms, userId]);
     }
     res.json({ success: true });
   } catch (err) {
@@ -488,7 +498,30 @@ apiRouter.post('/action/comment', requireAuth, async (req: AuthRequest, res) => 
 });
 
 // Mount the API router
+
+// --- Settings Routes ---
+apiRouter.get('/settings', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM settings');
+    const settings = rows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+apiRouter.post('/admin/settings', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { key, value } = req.body;
+    await pool.query('INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, value]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
 app.use('/api', apiRouter);
+
 
 
 

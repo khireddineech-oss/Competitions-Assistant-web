@@ -1,281 +1,285 @@
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, UserPlus, LogOut, MessageSquare, ThumbsUp, CheckCircle, UserCheck, Trash2, ShieldAlert, Sliders, ChevronRight, Zap, Target, Activity } from 'lucide-react';
-import { User } from './types';
+import {  LogOut, LayoutDashboard, Link2, PlusCircle, Settings, PlayCircle, StopCircle, MessageSquare, CheckSquare, Users, Loader2, Bell , ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import AuthScreen from './components/AuthScreen';
 import AccountsList from './components/AccountsList';
 import AddAccounts from './components/AddAccounts';
 import ActionsPanel from './components/ActionsPanel';
 import AdminPanel from './components/AdminPanel';
+import { User, Settings as SettingsType } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-export default function App() {
+function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState('home');
   const [showAuth, setShowAuth] = useState<'login' | 'register' | null>(null);
-
+  const [settings, setSettings] = useState<SettingsType>({});
+  
   useEffect(() => {
-    checkAuth();
-
-    const reqInterceptor = axios.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    const resInterceptor = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          localStorage.removeItem('token');
-          setUser(null);
-        }
-        return Promise.reject(error);
+    const fetchSettings = async () => {
+      try {
+        const res = await axios.get('/settings');
+        setSettings(res.data);
+      } catch (e) {
+        // ignore
       }
-    );
-
-    return () => {
-      axios.interceptors.request.eject(reqInterceptor);
-      axios.interceptors.response.eject(resInterceptor);
     };
+    fetchSettings();
+
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        try {
+          const res = await axios.get('/api/auth/me');
+          setUser(res.data.user);
+        } catch (err) {
+          localStorage.removeItem('token');
+          delete axios.defaults.headers.common['Authorization'];
+        }
+      }
+      setLoading(false);
+    };
+    
+    checkAuth();
   }, []);
 
-  const checkAuth = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      const res = await axios.get('/api/auth/me');
-      if (res.data && res.data.authenticated) {
-        setUser(res.data.user);
-      } else {
-        setUser(null);
-      }
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const logout = async () => {
-    try {
-      await axios.post('/api/auth/logout');
-    } catch (err) {
-      // ignore
-    }
+    try { await axios.post('/api/auth/logout'); } catch (e) {}
     localStorage.removeItem('token');
+    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
     setCurrentTab('home');
   };
 
+  const siteName = settings.siteName || 'أوتوميت برو';
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
       </div>
     );
   }
 
-  // --- Landing Page for Unauthenticated Users ---
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-yellow-500/30 overflow-x-hidden" dir="rtl">
-        {/* Navigation */}
-        <nav className="p-6 border-b border-gray-800/50 flex justify-between items-center bg-gray-950/80 backdrop-blur-md fixed top-0 w-full z-50">
+      <div className="min-h-screen bg-slate-950 text-slate-200 overflow-x-hidden font-sans" dir="rtl">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950 -z-10"></div>
+        <nav className="p-6 flex justify-between items-center max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-700 flex items-center justify-center shadow-lg shadow-yellow-900/20">
-              <Sliders className="w-5 h-5 text-gray-900" />
+            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <PlayCircle className="text-white w-6 h-6" />
             </div>
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600">
-              سوشيال اوتو
-            </span>
+            <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-indigo-400 to-purple-400">{siteName}</span>
           </div>
           <div className="flex gap-4">
-            <button 
-              onClick={() => setShowAuth('login')}
-              className="text-gray-300 hover:text-white px-4 py-2 font-medium transition"
-            >
-              تسجيل الدخول
-            </button>
-            <button 
-              onClick={() => setShowAuth('register')}
-              className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-6 py-2 rounded-full font-bold transition shadow-lg shadow-yellow-500/20"
-            >
-              حساب جديد
-            </button>
+            <button onClick={() => setShowAuth('login')} className="text-slate-300 font-medium hover:text-white transition">تسجيل الدخول</button>
+            <button onClick={() => setShowAuth('register')} className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-xl font-medium transition shadow-lg shadow-indigo-500/20 hidden sm:block">إنشاء حساب</button>
           </div>
         </nav>
-
-        {/* Hero Section */}
-        <main className="pt-32 pb-20 px-6">
-          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">
-            <div className="flex-1 space-y-8 text-center lg:text-right">
-              <h1 className="text-5xl md:text-7xl font-extrabold leading-tight tracking-tight text-white">
-                إدارة صفحاتك<br />
-                <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600">
-                  بذكاء وسرعة
-                </span>
-              </h1>
-              <p className="text-xl text-gray-400 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-                أداة متكاملة للتحكم في حساباتك، زيادة التفاعل، وإدارة التعليقات بطريقة تلقائية آمنة وفعالة، صُممت خصيصاً للمسوقين وصناع المحتوى.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
-                <button 
-                  onClick={() => setShowAuth('register')}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-8 py-4 rounded-full font-bold text-lg transition shadow-xl shadow-yellow-500/20 flex items-center justify-center gap-2"
-                >
-                  <Zap className="w-5 h-5" />
-                  ابدأ الآن مجاناً
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 relative">
-              <div className="absolute inset-0 bg-gradient-to-tr from-yellow-500/20 to-transparent blur-3xl -z-10 rounded-full"></div>
-              <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl shadow-yellow-900/10 grid grid-cols-2 gap-4">
-                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                      <ThumbsUp className="text-blue-500 w-6 h-6" />
+        
+        <main className="max-w-6xl mx-auto px-6 py-12 md:py-24 grid md:grid-cols-2 gap-12 items-center">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+            <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
+              أدر نشاطك الرقمي <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">بذكاء وسهولة</span>
+            </h1>
+            <p className="text-slate-400 text-lg mb-8 leading-relaxed">
+              منصة متكاملة لأتمتة المهام اليومية، تنظيم القنوات، وإدارة الأنشطة بفعالية. نوفر لك الأدوات لتبسيط سير عملك وزيادة إنتاجيتك بخطوات بسيطة.
+            </p>
+            <button onClick={() => setShowAuth('register')} className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:shadow-xl hover:shadow-indigo-500/30 transition-all flex items-center gap-3">
+              <PlayCircle className="w-6 h-6" />
+              ابدأ تجربتك الآن
+            </button>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.2 }} className="relative">
+             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl blur-2xl opacity-20"></div>
+             <div className="relative bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl grid grid-cols-2 gap-4">
+               {[
+                 { icon: Link2, color: 'text-blue-400', bg: 'bg-blue-400/10', title: 'حساباتي' },
+                 { icon: PlayCircle, color: 'text-indigo-400', bg: 'bg-indigo-400/10', title: 'تفاعلات' },
+                 { icon: MessageSquare, color: 'text-purple-400', bg: 'bg-purple-400/10', title: 'تعليقات' },
+                 { icon: Users, color: 'text-emerald-400', bg: 'bg-emerald-400/10', title: 'متابعة صفحات' }
+               ].map((item, i) => (
+                 <div key={i} className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50 flex flex-col items-center gap-3 text-center">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${item.bg}`}>
+                      <item.icon className={`w-6 h-6 ${item.color}`} />
                     </div>
-                    <span className="text-gray-300 font-medium">تفاعلات تلقائية</span>
+                    <span className="text-slate-300 font-medium">{item.title}</span>
                  </div>
-                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                      <MessageSquare className="text-green-500 w-6 h-6" />
-                    </div>
-                    <span className="text-gray-300 font-medium">ردود ذكية</span>
-                 </div>
-                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                      <Users className="text-purple-500 w-6 h-6" />
-                    </div>
-                    <span className="text-gray-300 font-medium">إدارة متعددة</span>
-                 </div>
-                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
-                      <Activity className="text-yellow-500 w-6 h-6" />
-                    </div>
-                    <span className="text-gray-300 font-medium">تقارير سريعة</span>
-                 </div>
-              </div>
-            </div>
-          </div>
+               ))}
+             </div>
+          </motion.div>
         </main>
 
-        {/* Auth Modal overlay */}
-        {showAuth && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-             <div className="relative w-full max-w-md my-8">
-               <button 
-                 onClick={() => setShowAuth(null)}
-                 className="absolute -top-4 -right-4 w-8 h-8 bg-gray-800 text-gray-400 hover:text-white rounded-full flex items-center justify-center z-10 shadow-lg border border-gray-700"
-               >
-                 ✕
-               </button>
-               <AuthScreen onLogin={setUser} initialMode={showAuth} />
-             </div>
-          </div>
-        )}
+        <AnimatePresence>
+          {showAuth && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+               <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="relative w-full max-w-md my-8">
+                 <button onClick={() => setShowAuth(null)} className="absolute -top-4 -right-4 w-10 h-10 bg-slate-800 text-slate-400 hover:text-white rounded-full flex items-center justify-center z-10 shadow-lg border border-slate-700 transition">✕</button>
+                 <AuthScreen onLogin={setUser} initialMode={showAuth} />
+               </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
 
-  // --- Authenticated Dashboard ---
   const tabs = [
-    { id: 'accounts', label: 'حساباتي', icon: Users },
-    { id: 'add', label: 'إضافة حسابات', icon: UserPlus },
-    { id: 'react', label: 'تفاعلات', icon: ThumbsUp },
-    { id: 'unreact', label: 'إزالة التفاعلات', icon: Trash2 },
+    { id: 'home', label: 'الرئيسية', icon: LayoutDashboard },
+    { id: 'accounts', label: 'حساباتي', icon: Link2 },
+    { id: 'add', label: 'إضافة حسابات', icon: PlusCircle },
+    { id: 'react', label: 'تفاعلات', icon: PlayCircle },
+    { id: 'unreact', label: 'إزالة التفاعلات', icon: StopCircle },
     { id: 'comment', label: 'تعليقات', icon: MessageSquare },
-    { id: 'confirm', label: 'تأكيدات', icon: CheckCircle },
-    { id: 'follow', label: 'متابعة صفحات', icon: UserCheck },
+    { id: 'confirm', label: 'تأكيدات', icon: CheckSquare },
+    { id: 'follow', label: 'متابعة صفحات', icon: Users },
   ];
 
   if (user.role === 'admin') {
-    tabs.push({ id: 'admin', label: 'إدارة النظام', icon: ShieldAlert });
+    tabs.push({ id: 'admin', label: 'إدارة النظام', icon: Settings });
   }
 
-  return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-gray-950 font-sans text-gray-200" dir="rtl">
-      <header className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-700 flex items-center justify-center shadow-lg shadow-yellow-900/20 cursor-pointer" onClick={() => setCurrentTab('home')}>
-            <Sliders className="w-5 h-5 text-gray-900" />
-          </div>
-          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600 cursor-pointer" onClick={() => setCurrentTab('home')}>
-            لوحة التحكم
-          </h1>
-          <div className="hidden sm:block mr-4 border-r border-gray-800 pr-4">
-            <span className="text-sm text-gray-400">أهلاً بك، <span className="text-white font-medium">{user.username}</span></span>
-            {user.role !== 'admin' && user.expires_at && (
-              <span className="text-xs text-yellow-500/80 mr-2 bg-yellow-500/10 px-2 py-0.5 rounded">
-                ينتهي: {(() => { try { return new Date(user.expires_at).toLocaleDateString('ar-EG'); } catch(e) { return 'تاريخ غير صالح'; } })()}
-              </span>
+  const renderContent = () => {
+    switch (currentTab) {
+      case 'home':
+        return (
+          <div className="space-y-6">
+            {settings.announcement && (
+              <div className="bg-indigo-500/10 border border-indigo-500/30 p-4 rounded-2xl flex items-start gap-4">
+                <Bell className="w-6 h-6 text-indigo-400 flex-shrink-0 mt-1" />
+                <div>
+                  <h3 className="text-white font-bold mb-1">إعلان إداري</h3>
+                  <p className="text-slate-300 text-sm leading-relaxed">{settings.announcement}</p>
+                </div>
+              </div>
             )}
-          </div>
-        </div>
-        <button
-          onClick={logout}
-          className="text-red-500 flex items-center gap-2 hover:bg-red-500/10 px-4 py-2 rounded-lg text-sm font-medium transition"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="hidden sm:inline">تسجيل الخروج</span>
-        </button>
-      </header>
-      
-      <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
-        <ErrorBoundary>
-          {currentTab === 'home' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-              {tabs.map(tab => (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {tabs.filter(t => t.id !== 'home').map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setCurrentTab(tab.id)}
-                  className="group p-6 bg-gray-900 border border-gray-800 rounded-2xl hover:border-yellow-500/50 hover:bg-gray-800 transition-all flex flex-col items-center justify-center gap-4 text-center aspect-[4/3] shadow-lg hover:shadow-xl hover:-translate-y-1"
+                  className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 p-6 rounded-3xl flex flex-col items-center justify-center gap-4 transition-all hover:bg-slate-800/80 group hover:-translate-y-1 shadow-lg"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-gray-950 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                    {(() => { const Icon = tab.icon; return <Icon className="w-7 h-7 text-yellow-500" />; })()}
+                  <div className="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                    <tab.icon className="w-7 h-7 text-indigo-400 group-hover:text-indigo-300 transition-colors" />
                   </div>
-                  <span className="font-bold text-lg text-white group-hover:text-yellow-500 transition-colors">{tab.label}</span>
+                  <span className="font-bold text-slate-200">{tab.label}</span>
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="space-y-6">
+          </div>
+        );
+      case 'accounts': return <AccountsList />;
+      case 'add': return <AddAccounts />;
+      case 'react': return <ActionsPanel type="react" title="تفاعلات" desc="إرسال تفاعلات بشكل آلي" />;
+      case 'confirm': return <ActionsPanel type="confirm" title="تأكيدات" desc="قبول طلبات المتابعة تلقائياً" />;
+      case 'unreact': return <ActionsPanel type="unreact" title="إزالة التفاعلات" desc="إزالة التفاعلات السابقة" />;
+      case 'follow': return <ActionsPanel type="follow" title="متابعة صفحات" desc="متابعة صفحات جديدة" />;
+      case 'comment': return <ActionsPanel type="comment" title="تعليقات" desc="نشر تعليقات مجدولة أو عشوائية" />;
+      case 'admin': return user.role === 'admin' ? <AdminPanel siteName={siteName} currentAnnouncement={settings.announcement} /> : null;
+      default: return null;
+    }
+  };
+
+  return (
+    <ErrorBoundary>
+      <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row font-sans text-slate-200" dir="rtl">
+        {/* Desktop Sidebar */}
+        <aside className="hidden md:flex flex-col w-72 bg-slate-900 border-l border-slate-800 sticky top-0 h-screen overflow-y-auto">
+          <div className="p-6 flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+              <PlayCircle className="text-white w-5 h-5" />
+            </div>
+            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-indigo-400 to-purple-400">{siteName}</span>
+          </div>
+          <div className="px-6 pb-4">
+            <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+              <p className="text-xs text-slate-400 mb-1">المستخدم الحالي</p>
+              <p className="font-bold text-white truncate">{user.username}</p>
+              {user.role !== 'admin' && user.expires_at && (
+                <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded inline-block">
+                  صالح حتى: {(() => { try { return new Date(user.expires_at).toLocaleDateString('ar-EG'); } catch(e) { return '-'; } })()}
+                </div>
+              )}
+            </div>
+          </div>
+          <nav className="flex-1 px-4 space-y-1">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setCurrentTab(tab.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition ${currentTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+              >
+                <tab.icon className="w-5 h-5" />
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+          <div className="p-4">
+            <button onClick={logout} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-red-400 hover:bg-red-400/10 transition font-medium">
+              <LogOut className="w-5 h-5" />
+              تسجيل الخروج
+            </button>
+          </div>
+        </aside>
+
+        {/* Mobile Header */}
+        <header className="md:hidden bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-20 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <PlayCircle className="text-white w-4 h-4" />
+             </div>
+             <span className="font-bold text-white">{siteName}</span>
+          </div>
+          <button onClick={logout} className="text-slate-400 hover:text-white p-2 bg-slate-800 rounded-lg"><LogOut className="w-5 h-5" /></button>
+        </header>
+
+        <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 w-full max-w-full overflow-x-hidden">
+          <div className="max-w-4xl mx-auto">
+            <motion.div
+              key={currentTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+            >
+              {currentTab !== 'home' && (
               <button
                 onClick={() => setCurrentTab('home')}
-                className="flex items-center gap-2 text-gray-400 hover:text-white transition bg-gray-900 px-5 py-2.5 rounded-xl border border-gray-800 w-max shadow-sm hover:border-gray-700"
+                className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white transition bg-slate-800/50 px-5 py-2.5 rounded-xl border border-slate-700/50 w-max shadow-sm hover:border-slate-600 hover:bg-slate-800"
               >
                 <ChevronRight className="w-5 h-5" />
                 <span className="font-bold">العودة للقائمة الرئيسية</span>
               </button>
-              
-              <div className="bg-gray-900 rounded-3xl p-4 sm:p-6 md:p-10 shadow-2xl border border-gray-800">
-                {currentTab === 'accounts' && <AccountsList />}
-                {currentTab === 'add' && <AddAccounts />}
-                {currentTab === 'react' && <ActionsPanel type="react" />}
-                {currentTab === 'confirm' && <ActionsPanel type="confirm" />}
-                {currentTab === 'unreact' && <ActionsPanel type="unreact" />}
-                {currentTab === 'follow' && <ActionsPanel type="follow" />}
-                {currentTab === 'comment' && <ActionsPanel type="comment" />}
-                {currentTab === 'admin' && user.role === 'admin' && <AdminPanel />}
-              </div>
-            </div>
-          )}
-        </ErrorBoundary>
-      </main>
-    </div>
+            )}
+            {renderContent()}
+            </motion.div>
+          </div>
+        </main>
+
+        {/* Mobile Bottom Navigation */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-t border-slate-800 z-20 pb-safe">
+          <nav className="flex overflow-x-auto p-2 gap-1 no-scrollbar">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setCurrentTab(tab.id)}
+                className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-14 rounded-xl transition-colors ${currentTab === tab.id ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                <tab.icon className="w-5 h-5 mb-1" />
+                <span className="text-[10px] font-medium truncate w-full text-center">{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
     </ErrorBoundary>
   );
 }
+
+export default App;

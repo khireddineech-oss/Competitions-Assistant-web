@@ -1,19 +1,29 @@
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { User } from '../types';
-import { Users, Clock, Ban, Trash2, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Trash2, Clock, Ban, CheckCircle, AlertCircle, Edit, Settings, PlayCircle } from 'lucide-react';
 
-export default function AdminPanel() {
+interface Props {
+  siteName: string;
+  currentAnnouncement?: string;
+}
+
+export default function AdminPanel({ siteName, currentAnnouncement }: Props) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [newName, setNewName] = useState(siteName);
+  const [newAnnouncement, setNewAnnouncement] = useState(currentAnnouncement || '');
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [customDays, setCustomDays] = useState<Record<string, string>>({});
 
   const fetchUsers = async () => {
     try {
       const res = await axios.get('/api/admin/users');
       setUsers(res.data);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'حدث خطأ');
     } finally {
       setLoading(false);
     }
@@ -26,118 +36,146 @@ export default function AdminPanel() {
   const handleAction = async (userId: string, action: string, days?: number) => {
     try {
       await axios.post(`/api/admin/users/${userId}/action`, { action, days });
-      setMessage('تم تحديث المستخدم بنجاح');
-      await fetchUsers();
+      fetchUsers();
     } catch (err: any) {
-      setMessage(err.response?.data?.error || 'فشلت العملية');
-    } finally {
-      setTimeout(() => setMessage(''), 3000);
+      alert(err.response?.data?.error || 'حدث خطأ');
     }
   };
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا المستخدم وبياناته نهائياً؟')) return;
+  const updateSettings = async (key: string, value: string) => {
+    setSettingsLoading(true);
     try {
-      await axios.delete(`/api/admin/users/${userId}`);
-      setMessage('تم حذف المستخدم بنجاح');
-      await fetchUsers();
-    } catch (err: any) {
-      setMessage(err.response?.data?.error || 'فشل الحذف');
+      await axios.post('/api/admin/settings', { key, value });
+      alert('تم التحديث بنجاح');
+      window.location.reload();
+    } catch (err) {
+      alert('حدث خطأ أثناء التحديث');
     } finally {
-      setTimeout(() => setMessage(''), 3000);
+      setSettingsLoading(false);
     }
   };
 
-  if (loading) return <div className="text-gray-400">جاري تحميل البيانات...</div>;
+  if (loading) return <div className="text-center p-8 text-slate-400">جاري التحميل...</div>;
 
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Users className="w-7 h-7 text-yellow-500" />
-          إدارة النظام
+        <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+          <Settings className="w-6 h-6 text-indigo-400" /> إعدادات المنصة
         </h2>
-        <p className="text-gray-400 mt-1">التحكم الشامل في العضويات والصلاحيات</p>
+        <p className="text-slate-400 mb-6">تحكم في اسم الموقع والإعلانات الإدارية</p>
+        
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
+             <label className="block text-sm font-medium text-slate-300 mb-2">اسم المنصة</label>
+             <div className="flex gap-2">
+               <input 
+                 type="text" 
+                 value={newName} 
+                 onChange={e => setNewName(e.target.value)}
+                 className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-indigo-500 focus:outline-none"
+               />
+               <button 
+                 onClick={() => updateSettings('siteName', newName)}
+                 disabled={settingsLoading}
+                 className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition"
+               >
+                 حفظ
+               </button>
+             </div>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
+             <label className="block text-sm font-medium text-slate-300 mb-2">إعلان إداري (يظهر لجميع المستخدمين)</label>
+             <div className="flex gap-2">
+               <input 
+                 type="text" 
+                 value={newAnnouncement} 
+                 onChange={e => setNewAnnouncement(e.target.value)}
+                 placeholder="اتركه فارغاً للإزالة"
+                 className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-indigo-500 focus:outline-none"
+               />
+               <button 
+                 onClick={() => updateSettings('announcement', newAnnouncement)}
+                 disabled={settingsLoading}
+                 className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition"
+               >
+                 نشر
+               </button>
+             </div>
+          </div>
+        </div>
       </div>
 
-      {message && (
-        <div className="p-4 bg-green-500/10 text-green-400 rounded-xl text-sm border border-green-500/20 font-bold">
-          {message}
-        </div>
-      )}
+      <div>
+        <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+          <ShieldAlert className="w-6 h-6 text-indigo-400" /> إدارة الأعضاء
+        </h2>
+        <p className="text-slate-400 mb-6">تحكم في صلاحيات واشتراكات الأعضاء</p>
 
-      <div className="bg-gray-900 rounded-2xl shadow-xl border border-gray-800 overflow-hidden">
-        <div className="p-5 border-b border-gray-800 bg-gray-900/50">
-          <h3 className="font-bold text-gray-200">قائمة المستخدمين</h3>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right text-gray-400">
-            <thead className="text-xs text-gray-300 uppercase bg-gray-950/50 border-b border-gray-800">
-              <tr>
-                <th className="px-6 py-4 font-bold">المستخدم</th>
-                <th className="px-6 py-4 font-bold">الحالة</th>
-                <th className="px-6 py-4 font-bold">انتهاء الاشتراك</th>
-                <th className="px-6 py-4 font-bold text-center">إجراءات</th>
+        {error && <div className="text-red-400 bg-red-400/10 p-4 rounded-xl mb-4">{error}</div>}
+
+        <div className="overflow-x-auto bg-slate-900 border border-slate-800 rounded-2xl">
+          <table className="w-full text-right">
+            <thead>
+              <tr className="bg-slate-800/50 border-b border-slate-800">
+                <th className="p-4 text-slate-400 font-medium">المستخدم</th>
+                <th className="p-4 text-slate-400 font-medium">الدور</th>
+                <th className="p-4 text-slate-400 font-medium">الحالة</th>
+                <th className="p-4 text-slate-400 font-medium">الاشتراك</th>
+                <th className="p-4 text-slate-400 font-medium text-center">إجراءات سريعة</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-slate-800">
               {users.map(u => (
-                <tr key={u.id} className="hover:bg-gray-800/30 transition">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-gray-200">{u.username}</div>
-                    <div className="text-xs text-gray-500 mt-1 uppercase">{u.role}</div>
+                <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
+                  <td className="p-4 font-bold text-white">{u.username}</td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs ${u.role === 'admin' ? 'bg-purple-500/10 text-purple-400' : 'bg-slate-800 text-slate-300'}`}>
+                      {u.role === 'admin' ? 'مدير' : 'مستخدم'}
+                    </span>
                   </td>
-                  <td className="px-6 py-4">
-                    {u.status === 'active' ? (
-                      <span className="px-2 py-1 bg-green-500/10 text-green-500 rounded text-xs font-bold border border-green-500/20">نشط</span>
-                    ) : (
-                      <span className="px-2 py-1 bg-red-500/10 text-red-500 rounded text-xs font-bold border border-red-500/20">محظور</span>
-                    )}
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      u.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 
+                      u.status === 'paused' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {u.status === 'active' ? 'نشط' : u.status === 'paused' ? 'مجمد' : 'محظور'}
+                    </span>
                   </td>
-                  <td className="px-6 py-4">
-                    {u.role === 'admin' ? (
-                      <span className="text-yellow-500 font-bold">عضوية دائمة</span>
-                    ) : u.expires_at !== null ? (
-                      <span className={new Date() > new Date(u.expires_at) ? 'text-red-400 font-bold' : 'text-gray-300'}>
-                        {u.expires_at ? new Date(u.expires_at).toLocaleDateString('ar-EG') : 'غير محدد'}
-                      </span>
-                    ) : (
-                      <span className="text-red-400 font-bold">غير فعال</span>
-                    )}
+                  <td className="p-4 text-sm text-slate-300">
+                    {u.expires_at ? new Date(u.expires_at).toLocaleDateString('ar-EG') : 'مدى الحياة'}
                   </td>
-                  <td className="px-6 py-4 flex flex-wrap gap-2 justify-end">
-                    {u.role !== 'admin' && (
-                      <>
-                        <button
-                          onClick={() => handleAction(u.id, u.status === 'active' ? 'block' : 'unblock')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
-                            u.status === 'active' 
-                              ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' 
-                              : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
-                          }`}
-                        >
-                          {u.status === 'active' ? <><Ban className="w-3.5 h-3.5" /> حظر</> : <><CheckCircle2 className="w-3.5 h-3.5" /> تنشيط</>}
-                        </button>
-                        
-                        <div className="flex gap-1 bg-gray-950 p-1 rounded-lg border border-gray-800">
-                          <button onClick={() => handleAction(u.id, 'extend', 1)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+يوم</button>
-                          <button onClick={() => handleAction(u.id, 'extend', 7)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+أسبوع</button>
-                          <button onClick={() => handleAction(u.id, 'extend', 30)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+شهر</button>
+                  <td className="p-4">
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <div className="flex items-center gap-1 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50">
+                          <input type="number" value={customDays[u.id] || ''} onChange={e => setCustomDays({...customDays, [u.id]: e.target.value})} className="w-12 bg-slate-900 border border-slate-700 text-white px-1 py-1 rounded text-xs text-center focus:outline-none focus:border-indigo-500" placeholder="يوم" />
+                          <button onClick={() => handleAction(u.id, 'extend', parseInt(customDays[u.id] || '30'))} className="text-xs bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white px-2 py-1 rounded transition">إضافة</button>
+                          <button onClick={() => handleAction(u.id, 'reduce', parseInt(customDays[u.id] || '30'))} className="text-xs bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white px-2 py-1 rounded transition">خصم</button>
                         </div>
-                        
-                        <button
-                          onClick={() => handleDelete(u.id)}
-                          className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg text-xs font-bold hover:bg-red-500/20 transition flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          حذف
-                        </button>
-                      </>
-                    )}
+                      
+                      
+                      {u.status === 'blocked' ? (
+                        <button onClick={() => handleAction(u.id, 'unblock')} className="text-emerald-400 hover:bg-emerald-400/10 p-1.5 rounded transition" title="رفع الحظر"><CheckCircle className="w-4 h-4" /></button>
+                      ) : (
+                        <button onClick={() => handleAction(u.id, 'block')} className="text-red-400 hover:bg-red-400/10 p-1.5 rounded transition" title="حظر"><Ban className="w-4 h-4" /></button>
+                      )}
+                      
+                      {u.status === 'paused' ? (
+                        <button onClick={() => handleAction(u.id, 'unblock')} className="text-emerald-400 hover:bg-emerald-400/10 p-1.5 rounded transition" title="تفعيل النشاط"><PlayCircle className="w-4 h-4" /></button>
+                      ) : (
+                        <button onClick={() => handleAction(u.id, 'pause')} className="text-yellow-400 hover:bg-yellow-400/10 p-1.5 rounded transition" title="تجميد مؤقت"><Clock className="w-4 h-4" /></button>
+                      )}
+
+                      <button onClick={() => handleAction(u.id, 'delete')} className="text-red-400 hover:bg-red-400/10 p-1.5 rounded transition" title="حذف نهائي"><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   </td>
                 </tr>
               ))}
+              {users.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-500">لا يوجد أعضاء</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
