@@ -1,4 +1,6 @@
+const fs = require('fs');
 
+const code = `
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -8,7 +10,7 @@ import crypto from 'crypto';
 import cookieParser from 'cookie-parser';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
-import { initDb, query, execute } from './src/db.ts';
+import { initDb, query, execute } from './src/db.js';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -67,14 +69,12 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     if (user.status === 'blocked') return res.status(403).json({ error: 'عفواً، الحساب موقوف.' });
-    const exp = user.expiresAt || user.expiresat;
-    if (user.role !== 'admin' && exp !== null && exp !== undefined && Date.now() > Number(exp)) {
+    if (user.role !== 'admin' && user.expiresat !== null && Date.now() > Number(user.expiresat)) {
       return res.status(403).json({ error: 'عفواً، الاشتراك غير فعال.' });
     }
     
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-    const exp2 = user.expiresAt || user.expiresat;
-    res.json({ success: true, token, userId: user.id, username: user.username, role: user.role, expiresAt: exp2 !== null && exp2 !== undefined ? Number(exp2) : null });
+    res.json({ success: true, token, userId: user.id, username: user.username, role: user.role, expiresAt: user.expiresat ? Number(user.expiresat) : null });
   } catch (err) {
     res.status(500).json({ error: 'حدث خطأ في الخادم' });
   }
@@ -117,13 +117,11 @@ app.get('/api/auth/me', async (req, res) => {
     if (users.length === 0) return res.json({ authenticated: false });
     
     const user = users[0];
-    const exp3 = user.expiresAt || user.expiresat;
-    if (user.status === 'blocked' || (user.role !== 'admin' && exp3 !== null && exp3 !== undefined && Date.now() > Number(exp3))) {
+    if (user.status === 'blocked' || (user.role !== 'admin' && user.expiresat !== null && Date.now() > Number(user.expiresat))) {
       return res.json({ authenticated: false });
     }
     
-    const exp4 = user.expiresAt || user.expiresat;
-    res.json({ authenticated: true, token, userId: user.id, username: user.username, role: user.role, expiresAt: exp4 !== null && exp4 !== undefined ? Number(exp4) : null });
+    res.json({ authenticated: true, token, userId: user.id, username: user.username, role: user.role, expiresAt: user.expiresat ? Number(user.expiresat) : null });
   } catch (err) {
     res.json({ authenticated: false });
   }
@@ -140,8 +138,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
     
     const user = users[0];
     if (user.status === 'blocked') return res.status(403).json({ error: 'الحساب موقوف' });
-    const exp5 = user.expiresAt || user.expiresat;
-    if (user.role !== 'admin' && exp5 !== null && exp5 !== undefined && Date.now() > Number(exp5)) {
+    if (user.role !== 'admin' && user.expiresat !== null && Date.now() > Number(user.expiresat)) {
       return res.status(403).json({ error: 'الاشتراك غير فعال' });
     }
     
@@ -163,10 +160,7 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
 // Admin Routes
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
   const users = await query('SELECT id, username, role, status, expiresAt FROM users');
-  res.json(users.map(u => {
-    const e = u.expiresAt || u.expiresat;
-    return { userId: u.id, username: u.username, role: u.role, status: u.status, expiresAt: e !== null && e !== undefined ? Number(e) : null };
-  }));
+  res.json(users.map(u => ({ userId: u.id, username: u.username, role: u.role, status: u.status, expiresAt: u.expiresat ? Number(u.expiresat) : null })));
 });
 
 app.post('/api/admin/users/:id/action', requireAuth, requireAdmin, async (req, res) => {
@@ -180,8 +174,7 @@ app.post('/api/admin/users/:id/action', requireAuth, requireAdmin, async (req, r
   if (action === 'unblock') await execute('UPDATE users SET status = ? WHERE id = ?', ['active', id]);
   if (action === 'add_time' && days) {
     const user = users[0];
-    const exp6 = user.expiresAt || user.expiresat;
-    const currentExpiry = exp6 !== null && exp6 !== undefined && Number(exp6) > Date.now() ? Number(exp6) : Date.now();
+    const currentExpiry = user.expiresat && Number(user.expiresat) > Date.now() ? Number(user.expiresat) : Date.now();
     const newExpiry = currentExpiry + (days * 24 * 60 * 60 * 1000);
     await execute('UPDATE users SET expiresAt = ? WHERE id = ?', [newExpiry, id]);
   }
@@ -255,7 +248,7 @@ function extractPostId(url: string) {
     const patterns = [ /facebook\.com\/(\d+)\/posts\/(\d+)/, /story_fbid=(\d+)&id=(\d+)/, /posts\/(\d+)/, /photo.php\?fbid=(\d+)/ ];
     for (const pattern of patterns) {
       const match = url.match(pattern);
-      if (match) return match.length === 3 ? `${match[1]}_${match[2]}` : match[1];
+      if (match) return match.length === 3 ? \`\${match[1]}_\${match[2]}\` : match[1];
     }
     return null;
   } catch { return null; }
@@ -267,7 +260,7 @@ function extractCommentId(url: string) {
     if (url.includes("comment_id=")) return url.split("comment_id=")[1].split("&")[0];
     const parts = url.split("/").filter(Boolean);
     const lastPart = parts[parts.length - 1].split("?")[0];
-    if (/^d+$/.test(lastPart)) return lastPart;
+    if (/^\d+$/.test(lastPart)) return lastPart;
     return null;
   } catch { return null; }
 }
@@ -468,7 +461,7 @@ app.post('/api/action/react', requireAuth, async (req, res) => {
   for (const a of accs) {
     const accToken = decryptString(a.token);
     const reaction = reactions[Math.floor(Math.random() * reactions.length)];
-    const r = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${target}/reactions`, "POST", { type: reaction }, null, accToken);
+    const r = await makeFacebookRequest(\`https://graph.facebook.com/v19.0/\${target}/reactions\`, "POST", { type: reaction }, null, accToken);
     if (r && !r.error) {
       ok++; results.push({ name: a.name, id: a.acc_id, reaction, success: true });
     } else {
@@ -494,8 +487,8 @@ app.post('/api/action/confirm', requireAuth, async (req, res) => {
   const results = [];
   for (const a of accs) {
     const accToken = decryptString(a.token);
-    const r1 = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${mainTarget}/reactions`, "POST", { type: "LIKE" }, null, accToken);
-    const r2 = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${confirmTarget}/reactions`, "POST", { type: "LIKE" }, null, accToken);
+    const r1 = await makeFacebookRequest(\`https://graph.facebook.com/v19.0/\${mainTarget}/reactions\`, "POST", { type: "LIKE" }, null, accToken);
+    const r2 = await makeFacebookRequest(\`https://graph.facebook.com/v19.0/\${confirmTarget}/reactions\`, "POST", { type: "LIKE" }, null, accToken);
     if (r1 && !r1.error && r2 && !r2.error) {
       ok++; results.push({ name: a.name, success: true });
     } else {
@@ -522,7 +515,7 @@ app.post('/api/action/unreact', requireAuth, async (req, res) => {
     if (toRemoveIds.length === 0 || toRemoveIds.includes(a.acc_id)) {
       try {
         const accToken = decryptString(a.token);
-        const response = await axios.delete(`https://graph.facebook.com/v19.0/${targetId}/likes`, { params: { access_token: accToken }, timeout: 15000 });
+        const response = await axios.delete(\`https://graph.facebook.com/v19.0/\${targetId}/likes\`, { params: { access_token: accToken }, timeout: 15000 });
         if (response.status === 200) {
           ok++; results.push({ name: a.name, success: true });
         } else {
@@ -551,7 +544,7 @@ app.post('/api/action/follow', requireAuth, async (req, res) => {
   const results = [];
   for (const a of accs) {
     const accToken = decryptString(a.token);
-    const r = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${pageId}/likes`, "POST", {}, null, accToken);
+    const r = await makeFacebookRequest(\`https://graph.facebook.com/v19.0/\${pageId}/likes\`, "POST", {}, null, accToken);
     if (r && !r.error) {
       ok++; results.push({ name: a.name, success: true });
     } else {
@@ -586,7 +579,7 @@ app.post('/api/action/comment', requireAuth, async (req, res) => {
     const a = accs[i % accs.length];
     const accToken = decryptString(a.token);
     const message = commentWords[Math.floor(Math.random() * commentWords.length)];
-    const r = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${targetId}/comments`, "POST", { message }, null, accToken);
+    const r = await makeFacebookRequest(\`https://graph.facebook.com/v19.0/\${targetId}/comments\`, "POST", { message }, null, accToken);
     if (r && !r.error) {
       ok++; results.push({ name: a.name, success: true, message });
     } else {
@@ -607,7 +600,10 @@ async function startServer() {
     app.use(express.static(distPath));
     app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
-  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://localhost:${PORT}`));
+  app.listen(PORT, "0.0.0.0", () => console.log(\`Server running on http://localhost:\${PORT}\`));
 }
 
 startServer();
+`
+
+fs.writeFileSync('server.ts', code);
