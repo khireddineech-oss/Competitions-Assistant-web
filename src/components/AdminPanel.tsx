@@ -83,7 +83,7 @@ export default function AdminPanel() {
             </thead>
             <tbody className="divide-y divide-gray-800">
               {users.map(u => (
-                <tr key={u.userId} className="hover:bg-gray-800/30 transition">
+                <tr key={u.id} className="hover:bg-gray-800/30 transition">
                   <td className="px-6 py-4">
                     <div className="font-bold text-gray-200">{u.username}</div>
                     <div className="text-xs text-gray-500 mt-1 uppercase">{u.role}</div>
@@ -98,9 +98,9 @@ export default function AdminPanel() {
                   <td className="px-6 py-4">
                     {u.role === 'admin' ? (
                       <span className="text-yellow-500 font-bold">عضوية دائمة</span>
-                    ) : u.expiresAt !== null && u.expiresAt > 0 ? (
-                      <span className={Date.now() > u.expiresAt ? 'text-red-400 font-bold' : 'text-gray-300'}>
-                        {u.expiresAt ? new Date(Number(u.expiresAt)).toLocaleDateString('ar-EG') : 'غير محدد'}
+                    ) : u.expires_at !== null ? (
+                      <span className={new Date() > new Date(u.expires_at) ? 'text-red-400 font-bold' : 'text-gray-300'}>
+                        {u.expires_at ? new Date(u.expires_at).toLocaleDateString('ar-EG') : 'غير محدد'}
                       </span>
                     ) : (
                       <span className="text-red-400 font-bold">غير فعال</span>
@@ -110,7 +110,7 @@ export default function AdminPanel() {
                     {u.role !== 'admin' && (
                       <>
                         <button
-                          onClick={() => handleAction(u.userId, u.status === 'active' ? 'block' : 'unblock')}
+                          onClick={() => handleAction(u.id, u.status === 'active' ? 'block' : 'unblock')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
                             u.status === 'active' 
                               ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' 
@@ -121,13 +121,13 @@ export default function AdminPanel() {
                         </button>
                         
                         <div className="flex gap-1 bg-gray-950 p-1 rounded-lg border border-gray-800">
-                          <button onClick={() => handleAction(u.userId, 'add_time', 1)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+يوم</button>
-                          <button onClick={() => handleAction(u.userId, 'add_time', 7)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+أسبوع</button>
-                          <button onClick={() => handleAction(u.userId, 'add_time', 30)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+شهر</button>
+                          <button onClick={() => handleAction(u.id, 'extend', 1)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+يوم</button>
+                          <button onClick={() => handleAction(u.id, 'extend', 7)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+أسبوع</button>
+                          <button onClick={() => handleAction(u.id, 'extend', 30)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-bold transition">+شهر</button>
                         </div>
                         
                         <button
-                          onClick={() => handleDelete(u.userId)}
+                          onClick={() => handleDelete(u.id)}
                           className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg text-xs font-bold hover:bg-red-500/20 transition flex items-center gap-1"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

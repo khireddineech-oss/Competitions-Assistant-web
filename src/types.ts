@@ -1,5 +1,6 @@
 export interface Account {
   id: string;
+  acc_id: string;
   name: string;
   email?: string;
   password?: string;
@@ -10,9 +11,9 @@ export interface Account {
 }
 
 export interface User {
-  userId: string;
+  id: string;
   username: string;
   role: 'admin' | 'user';
   status: 'active' | 'blocked';
-  expiresAt: number | null;
+  expires_at: string | null;
 }

@@ -1,44 +1,49 @@
-
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
-import fs from 'fs';
-import axios from 'axios';
 import crypto from 'crypto';
-import cookieParser from 'cookie-parser';
-import { v4 as uuidv4 } from 'uuid';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { initDb, query, execute } from './src/db';
+import axios from 'axios';
 
+// Ensure DATABASE_URL is checked early, but do not crash on import if it's missing,
+// instead we will crash gracefully during initDb if we can't connect.
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_development_secret_only';
 
 app.use(express.json());
-app.use(cookieParser());
+
+// --- Initialization & Server Start ---
 
 let dbInitialized = false;
-let dbInitPromise = null;
+let dbInitPromise: Promise<void> | null = null;
+
+// Ensure database is initialized before any request is processed
 app.use(async (req, res, next) => {
   if (!dbInitialized) {
     if (!dbInitPromise) {
       dbInitPromise = initDb().then(() => {
         dbInitialized = true;
       }).catch(err => {
-        console.error("Database initialization failed:", err);
+        console.error("Critical DB Init Error:", err);
         dbInitPromise = null;
       });
     }
-    await dbInitPromise;
+    try {
+      await dbInitPromise;
+    } catch (err) {
+      return res.status(500).json({ error: 'Database initialization failed' });
+    }
   }
   next();
 });
 
-
-// --- AES Encryption at Rest ---
-const _AES_PASSWORD = process.env.AES_PASSWORD || "58Zk72Mf2Xo60Dh4Gi87Xs45Yu20Yn0Td48Bq98Ya20Rd28Si27Ie29Wj97Ly32Aq55De37Qd8Ul";
+// AES Encryption for Facebook tokens
+const _AES_PASSWORD = process.env.AES_PASSWORD || "default_aes_password_replace_in_production_123456";
 const CIPHER_KEY = crypto.createHash('sha256').update(_AES_PASSWORD).digest();
-const JWT_SECRET = process.env.JWT_SECRET || "secure_jwt_secret_key_2026";
 
-function encryptString(text: string) {
+function encryptToken(text: string) {
   if (!text) return text;
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', CIPHER_KEY, iv);
@@ -47,7 +52,7 @@ function encryptString(text: string) {
   return iv.toString('hex') + ':' + encrypted;
 }
 
-function decryptString(text: string) {
+function decryptToken(text: string) {
   if (!text || !text.includes(':')) return text;
   try {
     const parts = text.split(':');
@@ -63,560 +68,432 @@ function decryptString(text: string) {
   }
 }
 
-// Authentication & Session Middleware
-const getToken = (req: express.Request) => {
+// Database Setup
+let pool: pg.Pool;
+
+async function initDb() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.error('FATAL ERROR: DATABASE_URL environment variable is missing.');
+    console.error('Please configure your production PostgreSQL connection string.');
+    process.exit(1);
+  }
+
+  pool = new pg.Pool({
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false }
+  });
+
+  try {
+    // Create clean schema
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'user',
+        status VARCHAR(50) NOT NULL DEFAULT 'active',
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS accounts (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        acc_id VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
+        password VARCHAR(255),
+        token TEXT,
+        shared_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        type VARCHAR(50) NOT NULL DEFAULT 'account',
+        parent_id UUID,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    console.log("PostgreSQL schema validated successfully.");
+  } catch (err) {
+    console.error("Database initialization failed:", err);
+    process.exit(1);
+  }
+}
+
+// Auth Middleware
+interface AuthRequest extends Request {
+  user?: { id: string, username: string, role: string, status: string, expires_at: Date | null };
+}
+
+async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.split(' ')[1];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
   }
-  return req.cookies?.token;
-};
 
-app.post('/api/auth/login', async (req, res) => {
+  const token = authHeader.split(' ')[1];
   try {
-    const { username, password } = req.body;
-    const users = await query('SELECT * FROM users WHERE username = ?', [username]);
-    if (users.length === 0) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    const { rows } = await pool.query('SELECT id, username, role, status, expires_at FROM users WHERE id = $1', [decoded.id]);
     
-    const user = users[0];
-    if (decryptString(user.password) !== password) {
-      return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Unauthorized: User not found' });
     }
-    
-    if (user.status === 'blocked') return res.status(403).json({ error: 'عفواً، الحساب موقوف.' });
-    const exp = user.expiresAt || user.expiresat;
-    if (user.role !== 'admin' && exp !== null && exp !== undefined && Date.now() > Number(exp)) {
-      return res.status(403).json({ error: 'عفواً، الاشتراك غير فعال.' });
+
+    const user = rows[0];
+    if (user.status === 'blocked') {
+      return res.status(403).json({ error: 'Forbidden: Account is blocked' });
     }
-    
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-    const exp2 = user.expiresAt || user.expiresat;
-    res.json({ success: true, token, userId: user.id, username: user.username, role: user.role, expiresAt: exp2 !== null && exp2 !== undefined ? Number(exp2) : null });
-  } catch (err) {
-    res.status(500).json({ error: 'حدث خطأ في الخادم' });
-  }
-});
 
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    const existing = await query('SELECT * FROM users WHERE username = ?', [username]);
-    if (existing.length > 0) return res.status(400).json({ error: 'اسم المستخدم غير متاح' });
-    
-    const allUsers = await query('SELECT COUNT(*) as count FROM users');
-    const isFirstUser = parseInt(allUsers[0].count) === 0 || username === 'admin';
-    const id = uuidv4();
-    const role = isFirstUser ? 'admin' : 'user';
-    const expiresAt = isFirstUser ? null : 0;
-    
-    await execute('INSERT INTO users (id, username, password, role, status, expiresAt) VALUES (?, ?, ?, ?, ?, ?)', [
-      id, username, encryptString(password), role, 'active', expiresAt
-    ]);
-    
-    const token = jwt.sign({ userId: id, role }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ success: true, token, userId: id, username, role, expiresAt });
-  } catch (err) {
-    res.status(500).json({ error: 'حدث خطأ في التسجيل' });
-  }
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  res.json({ success: true });
-});
-
-app.get('/api/auth/me', async (req, res) => {
-  try {
-    const token = getToken(req);
-    if (!token) return res.json({ authenticated: false });
-    
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    const users = await query('SELECT * FROM users WHERE id = ?', [decoded.userId]);
-    if (users.length === 0) return res.json({ authenticated: false });
-    
-    const user = users[0];
-    const exp3 = user.expiresAt || user.expiresat;
-    if (user.status === 'blocked' || (user.role !== 'admin' && exp3 !== null && exp3 !== undefined && Date.now() > Number(exp3))) {
-      return res.json({ authenticated: false });
+    if (user.role !== 'admin' && user.expires_at && new Date() > new Date(user.expires_at)) {
+      return res.status(403).json({ error: 'Forbidden: Subscription expired' });
     }
-    
-    const exp4 = user.expiresAt || user.expiresat;
-    res.json({ authenticated: true, token, userId: user.id, username: user.username, role: user.role, expiresAt: exp4 !== null && exp4 !== undefined ? Number(exp4) : null });
-  } catch (err) {
-    res.json({ authenticated: false });
-  }
-});
 
-const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  try {
-    const token = getToken(req);
-    if (!token) return res.status(401).json({ error: 'غير مصرح' });
-    
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    const users = await query('SELECT * FROM users WHERE id = ?', [decoded.userId]);
-    if (users.length === 0) return res.status(401).json({ error: 'غير مصرح' });
-    
-    const user = users[0];
-    if (user.status === 'blocked') return res.status(403).json({ error: 'الحساب موقوف' });
-    const exp5 = user.expiresAt || user.expiresat;
-    if (user.role !== 'admin' && exp5 !== null && exp5 !== undefined && Date.now() > Number(exp5)) {
-      return res.status(403).json({ error: 'الاشتراك غير فعال' });
-    }
-    
-    (req as any).userId = user.id;
-    (req as any).userRole = user.role;
+    req.user = user;
     next();
   } catch (err) {
-    res.status(401).json({ error: 'غير مصرح' });
+    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
   }
-};
+}
 
-const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if ((req as any).userRole !== 'admin') {
-    return res.status(403).json({ error: 'غير مصرح' });
+async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: Admins only' });
   }
   next();
-};
+}
 
-// Admin Routes
-app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
-  const users = await query('SELECT id, username, role, status, expiresAt FROM users');
-  res.json(users.map(u => {
-    const e = u.expiresAt || u.expiresat;
-    return { userId: u.id, username: u.username, role: u.role, status: u.status, expiresAt: e !== null && e !== undefined ? Number(e) : null };
-  }));
+// API Routes
+const apiRouter = express.Router();
+
+// --- Auth Routes ---
+apiRouter.post('/auth/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password || username.length < 3 || password.length < 6) {
+      return res.status(400).json({ error: 'Invalid username or password format' });
+    }
+
+    const { rows: existing } = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+
+    const { rows: countRows } = await pool.query('SELECT COUNT(*) FROM users');
+    const isFirstUser = parseInt(countRows[0].count) === 0;
+    const role = isFirstUser ? 'admin' : 'user';
+    const status = 'active';
+
+    const hash = await bcrypt.hash(password, 10);
+    const { rows: newUsers } = await pool.query(
+      'INSERT INTO users (username, password_hash, role, status) VALUES ($1, $2, $3, $4) RETURNING id, username, role, status, expires_at',
+      [username, hash, role, status]
+    );
+
+    const user = newUsers[0];
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({ success: true, token, user });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-app.post('/api/admin/users/:id/action', requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { action, days } = req.body;
-  
-  const users = await query('SELECT * FROM users WHERE id = ?', [id]);
-  if (users.length === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
-  
-  if (action === 'block') await execute('UPDATE users SET status = ? WHERE id = ?', ['blocked', id]);
-  if (action === 'unblock') await execute('UPDATE users SET status = ? WHERE id = ?', ['active', id]);
-  if (action === 'add_time' && days) {
-    const user = users[0];
-    const exp6 = user.expiresAt || user.expiresat;
-    const currentExpiry = exp6 !== null && exp6 !== undefined && Number(exp6) > Date.now() ? Number(exp6) : Date.now();
-    const newExpiry = currentExpiry + (days * 24 * 60 * 60 * 1000);
-    await execute('UPDATE users SET expiresAt = ? WHERE id = ?', [newExpiry, id]);
+apiRouter.post('/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Missing credentials' });
+    }
+
+    const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const user = rows[0];
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    if (user.status === 'blocked') {
+      return res.status(403).json({ error: 'Account is blocked' });
+    }
+
+    if (user.role !== 'admin' && user.expires_at && new Date() > new Date(user.expires_at)) {
+      return res.status(403).json({ error: 'Subscription expired' });
+    }
+
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const { password_hash, ...safeUser } = user;
+    res.json({ success: true, token, user: safeUser });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
+});
+
+apiRouter.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
+  res.json({ authenticated: true, user: req.user });
+});
+
+apiRouter.post('/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const users = await query('SELECT * FROM users WHERE id = ?', [id]);
-  if (users.length === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
-  if (users[0].role === 'admin') return res.status(400).json({ error: 'لا يمكن حذف مدير' });
-  
-  await execute('DELETE FROM users WHERE id = ?', [id]);
-  res.json({ success: true });
+// --- Account Management Routes ---
+apiRouter.get('/accounts', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
+    res.json(rows.map(r => ({ ...r, token: r.token ? '***' : null }))); // Don't expose tokens
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch accounts' });
+  }
 });
 
-// Facebook Graph API Helpers
-function getRandomUserAgent() {
-  const userAgents = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-  ];
-  return userAgents[Math.floor(Math.random() * userAgents.length)];
-}
-
-async function makeFacebookRequest(url: string, method: string = "GET", params: any = {}, data: any = null, token: string | null = null) {
-  const headers = {
-    "User-Agent": getRandomUserAgent(),
-    "x-fb-connection-bandwidth": Math.floor(Math.random() * 10000000 + 20000000).toString(),
-    "x-fb-sim-hni": Math.floor(Math.random() * 9999 + 310000).toString(),
-    "x-fb-net-hni": Math.floor(Math.random() * 9999 + 310000).toString(),
-    "x-fb-connection-quality": ["EXCELLENT", "GOOD", "FAIR"][Math.floor(Math.random() * 3)],
-    "x-forwarded-for": Array.from({length: 4}, () => Math.floor(Math.random() * 255) + 1).join('.'),
-    "Accept-Language": "ar,en-US;q=0.7,en;q=0.3",
-    "Connection": "keep-alive"
-  };
-  if (token) params["access_token"] = token;
+apiRouter.post('/accounts', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const config: any = { method, url, headers, params, timeout: 15000 };
-    if (data) config.data = data;
-    const response = await axios(config);
-    return response.data;
-  } catch (error: any) {
-    return error.response ? error.response.data : null;
-  }
-}
+    const { accounts } = req.body;
+    if (!Array.isArray(accounts)) return res.status(400).json({ error: 'Invalid payload' });
 
-async function loginFacebook(email: string, password: string) {
-  const params = {
-    email, password,
-    access_token: "350685531728|62f8ce9f74b12f84c123cc23437a4a32",
-    format: "json", generate_session_cookies: "1", sig: "3f555f99fb61fcd7aa0c44f58f522ef6"
-  };
-  return await makeFacebookRequest("https://b-api.facebook.com/method/auth.login", "GET", params);
-}
-
-async function getProfile(token: string) {
-  try {
-    const data = await makeFacebookRequest("https://graph.facebook.com/me", "GET", { fields: "id,name" }, null, token);
-    return data && data.id ? data : { id: "unknown", name: "unknown" };
-  } catch (e) {
-    return { id: "unknown", name: "unknown" };
-  }
-}
-
-function extractPostId(url: string) {
-  try {
-    if (!url.includes("facebook.com")) return null;
-    const patterns = [ /facebook\.com\/(\d+)\/posts\/(\d+)/, /story_fbid=(\d+)&id=(\d+)/, /posts\/(\d+)/, /photo.php\?fbid=(\d+)/ ];
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) return match.length === 3 ? `${match[1]}_${match[2]}` : match[1];
+    let count = 0;
+    for (const acc of accounts) {
+      if (!acc.id || !acc.name) continue;
+      const encryptedToken = encryptToken(acc.token);
+      const encryptedPassword = encryptToken(acc.password);
+      
+      await pool.query(
+        'INSERT INTO accounts (user_id, acc_id, name, email, password, token, type) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [req.user!.id, acc.id, acc.name, acc.email || '', encryptedPassword, encryptedToken, acc.type || 'account']
+      );
+      count++;
     }
-    return null;
-  } catch { return null; }
-}
+    res.json({ success: true, count });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add accounts' });
+  }
+});
 
-function extractCommentId(url: string) {
+apiRouter.delete('/accounts/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
-    if (!url.includes("facebook.com")) return null;
-    if (url.includes("comment_id=")) return url.split("comment_id=")[1].split("&")[0];
-    const parts = url.split("/").filter(Boolean);
-    const lastPart = parts[parts.length - 1].split("?")[0];
-    if (/^d+$/.test(lastPart)) return lastPart;
-    return null;
-  } catch { return null; }
+    await pool.query('DELETE FROM accounts WHERE id = $1 AND user_id = $2', [req.params.id, req.user!.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+apiRouter.delete('/accounts', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    await pool.query('DELETE FROM accounts WHERE user_id = $1 AND shared_by IS NULL', [req.user!.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear accounts' });
+  }
+});
+
+apiRouter.post('/accounts/share', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { targetUsername } = req.body;
+    const { rows: targets } = await pool.query('SELECT id FROM users WHERE username = $1', [targetUsername]);
+    
+    if (targets.length === 0) return res.status(404).json({ error: 'User not found' });
+    const targetUserId = targets[0].id;
+    
+    if (targetUserId === req.user!.id) return res.status(400).json({ error: 'Cannot share with yourself' });
+    
+    const { rows: myAccounts } = await pool.query("SELECT * FROM accounts WHERE user_id = $1 AND type = 'account'", [req.user!.id]);
+    
+    let count = 0;
+    for (const acc of myAccounts) {
+      await pool.query(
+        'INSERT INTO accounts (user_id, acc_id, name, email, password, token, shared_by, type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [targetUserId, acc.acc_id, acc.name, acc.email, acc.password, acc.token, req.user!.id, 'account']
+      );
+      count++;
+    }
+    res.json({ success: true, count });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to share accounts' });
+  }
+});
+
+// --- Admin Routes ---
+apiRouter.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, username, role, status, expires_at, created_at FROM users');
+    // Also get counts
+    const { rows: counts } = await pool.query('SELECT user_id, COUNT(*) as count FROM accounts GROUP BY user_id');
+    
+    const usersWithCounts = rows.map(u => {
+      const c = counts.find(x => x.user_id === u.id);
+      return { ...u, accountsCount: c ? parseInt(c.count) : 0 };
+    });
+    
+    res.json(usersWithCounts);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+apiRouter.post('/admin/users/:id/action', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { action, days } = req.body;
+    const userId = req.params.id;
+    
+    if (action === 'block') {
+      await pool.query("UPDATE users SET status = 'blocked' WHERE id = $1", [userId]);
+    } else if (action === 'unblock') {
+      await pool.query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
+    } else if (action === 'extend' && days) {
+      const ms = parseInt(days) * 24 * 60 * 60 * 1000;
+      const newDate = new Date(Date.now() + ms);
+      await pool.query("UPDATE users SET expires_at = $1 WHERE id = $2", [newDate, userId]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+apiRouter.delete('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// --- Facebook Action Automation Routes ---
+const pause = () => new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
+function extractId(url: string) {
+  const match = url.match(/(?:fbid=|posts\/|videos\/|v=)([0-9]+)/);
+  return match ? match[1] : null;
 }
 
-const pause = () => new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 900));
-
-// Accounts API
-app.get('/api/accounts', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const accounts = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  res.json(accounts.map(a => ({
-    id: a.id,
-    acc_id: a.acc_id,
-    name: a.name,
-    email: decryptString(a.email),
-    password: decryptString(a.password),
-    token: decryptString(a.token),
-    shared_by: a.shared_by,
-    type: a.type,
-    parentId: a.parent_id
-  })));
-});
-
-app.post('/api/accounts/add', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { email, password } = req.body;
-  const r = await loginFacebook(email, password);
-  if (r && r.access_token) {
-    const p = await getProfile(r.access_token);
-    await execute('INSERT INTO accounts (user_id, acc_id, name, email, password, token, type) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-      userId, p.id, p.name, encryptString(email), encryptString(password), encryptString(r.access_token), 'account'
-    ]);
-    res.json({ success: true });
-  } else {
-    res.status(400).json({ error: 'فشل تسجيل الدخول' });
+async function makeFbReq(url: string, method: string, data: any, token: string) {
+  try {
+    const res = await axios({
+      method, url, data,
+      params: { access_token: token },
+      timeout: 10000
+    });
+    return res.data;
+  } catch (e: any) {
+    return { error: true, details: e.response?.data || e.message };
   }
-});
+}
 
-app.post('/api/accounts/add_token', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const token = req.body.token;
-  if (!token) return res.status(400).json({ error: 'توكن غير صالح' });
-  const p = await getProfile(token);
-  if (p.id && p.id !== "unknown") {
-    await execute('INSERT INTO accounts (user_id, acc_id, name, email, password, token, type) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-      userId, p.id, p.name, encryptString(''), encryptString(''), encryptString(token), 'account'
-    ]);
-    res.json({ success: true });
-  } else {
-    res.status(400).json({ error: 'توكن غير صالح أو حساب معطل' });
-  }
-});
+apiRouter.post('/action/react', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { url, reactions, targetAccounts, count } = req.body;
+    const target = extractId(url);
+    if (!target) return res.status(400).json({ error: 'Invalid URL' });
+    
+    let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
+    if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
+    if (targetAccounts === 'pages') accs = accs.filter(a => a.type === 'page');
+    if (count && count !== 'all') accs = accs.slice(0, parseInt(count, 10));
 
-app.post('/api/accounts/bulk_add', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const results = [];
-  for (const item of req.body.lines) {
-    const r = await loginFacebook(item.email, item.password);
-    if (r && r.access_token) {
-      const p = await getProfile(r.access_token);
-      await execute('INSERT INTO accounts (user_id, acc_id, name, email, password, token, type) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-        userId, p.id, p.name, encryptString(item.email), encryptString(item.password), encryptString(r.access_token), 'account'
-      ]);
-      results.push({ success: true, name: p.name, email: item.email });
-    } else {
-      results.push({ success: false, email: item.email });
-    }
-    await pause();
-  }
-  res.json({ success: true, results });
-});
-
-app.post('/api/accounts/bulk_tokens', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const results = [];
-  for (const token of req.body.tokens) {
-    if (token) {
-      const p = await getProfile(token);
-      if (p.id && p.id !== "unknown") {
-        await execute('INSERT INTO accounts (user_id, acc_id, name, email, password, token, type) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-          userId, p.id, p.name, encryptString(''), encryptString(''), encryptString(token), 'account'
-        ]);
-        results.push({ success: true, name: p.name });
+    let ok = 0, fail = 0;
+    const results = [];
+    for (const a of accs) {
+      if (!a.token) continue;
+      const accToken = decryptToken(a.token);
+      const reaction = reactions[Math.floor(Math.random() * reactions.length)];
+      const r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/reactions`, "POST", { type: reaction }, accToken);
+      if (r && !r.error) {
+        ok++; results.push({ name: a.name, reaction, success: true });
       } else {
-        results.push({ success: false });
-      }
-    } else {
-      results.push({ success: false });
-    }
-    await pause();
-  }
-  res.json({ success: true, results });
-});
-
-app.delete('/api/accounts/:id', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { id } = req.params;
-  const accs = await query('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [id, userId]);
-  if (accs.length === 0) return res.status(404).json({ error: 'غير موجود' });
-  if (accs[0].shared_by) return res.status(400).json({ error: 'لا يمكن حذف حساب مشترك' });
-  
-  await execute('DELETE FROM accounts WHERE id = ?', [id]);
-  res.json({ success: true });
-});
-
-app.post('/api/accounts/clear', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  await execute('DELETE FROM accounts WHERE user_id = ? AND shared_by IS NULL', [userId]);
-  res.json({ success: true });
-});
-
-app.post('/api/accounts/renew', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const accs = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  for (const acc of accs) {
-    if (acc.shared_by || acc.type === 'page') continue;
-    const email = decryptString(acc.email);
-    const pass = decryptString(acc.password);
-    if (email && pass) {
-      const r = await loginFacebook(email, pass);
-      if (r && r.access_token) {
-        const p = await getProfile(r.access_token);
-        await execute('UPDATE accounts SET token = ?, acc_id = ?, name = ? WHERE id = ?', [
-          encryptString(r.access_token), p.id || "unknown", p.name || "unknown", acc.id
-        ]);
-      }
-      await pause();
-    }
-  }
-  res.json({ success: true });
-});
-
-app.post('/api/accounts/:id/pages', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { id } = req.params;
-  const accs = await query('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [id, userId]);
-  
-  if (accs.length === 0) return res.status(400).json({ error: 'حساب غير صالح' });
-  const acc = accs[0];
-  const token = decryptString(acc.token);
-  
-  const r = await makeFacebookRequest("https://graph.facebook.com/v19.0/me/accounts", "GET", { fields: "id,name,access_token" }, null, token);
-  if (r && r.data) {
-    const existing = await query('SELECT acc_id FROM accounts WHERE user_id = ? AND type = ?', [userId, 'page']);
-    const existingIds = new Set(existing.map((a: any) => a.acc_id));
-    let added = 0;
-    for (const page of r.data) {
-      if (!existingIds.has(page.id)) {
-        await execute('INSERT INTO accounts (user_id, acc_id, name, token, type, parent_id) VALUES (?, ?, ?, ?, ?, ?)', [
-          userId, page.id, page.name, encryptString(page.access_token), 'page', acc.acc_id
-        ]);
-        added++;
-      }
-    }
-    res.json({ success: true, count: added });
-  } else {
-    res.status(400).json({ error: 'فشل استخراج الصفحات' });
-  }
-});
-
-app.post('/api/share', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { targetUsername } = req.body;
-  const targets = await query('SELECT * FROM users WHERE username = ?', [targetUsername]);
-  if (targets.length === 0) return res.status(404).json({ error: 'المستخدم غير موجود' });
-  
-  const targetUser = targets[0];
-  if (targetUser.id === userId) return res.status(400).json({ error: 'لا يمكنك المشاركة مع نفسك' });
-
-  const accs = await query('SELECT * FROM accounts WHERE user_id = ? AND type = ?', [userId, 'account']);
-  if (accs.length === 0) return res.status(400).json({ error: 'لا يوجد حسابات للمشاركة' });
-
-  let count = 0;
-  for (const acc of accs) {
-    await execute('INSERT INTO accounts (user_id, acc_id, name, email, password, token, shared_by, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
-      targetUser.id, acc.acc_id, acc.name, acc.email, acc.password, acc.token, userId, 'account'
-    ]);
-    count++;
-  }
-  res.json({ success: true, count });
-});
-
-// Actions
-app.post('/api/action/react', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { url, type, count, reactions, targetAccounts } = req.body;
-  const target = type === 'post' ? extractPostId(url) : extractCommentId(url);
-  if (!target) return res.status(400).json({ error: 'رابط غير صالح' });
-
-  let accs = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  if (targetAccounts === 'personal') accs = accs.filter((a: any) => a.type !== 'page');
-  else if (targetAccounts === 'pages') accs = accs.filter((a: any) => a.type === 'page');
-
-  if (count && count !== 'all') accs = accs.slice(0, parseInt(count, 10));
-
-  let ok = 0, fail = 0;
-  const results = [];
-  for (const a of accs) {
-    const accToken = decryptString(a.token);
-    const reaction = reactions[Math.floor(Math.random() * reactions.length)];
-    const r = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${target}/reactions`, "POST", { type: reaction }, null, accToken);
-    if (r && !r.error) {
-      ok++; results.push({ name: a.name, id: a.acc_id, reaction, success: true });
-    } else {
-      fail++; results.push({ name: a.name, id: a.acc_id, success: false });
-    }
-    await pause();
-  }
-  res.json({ success: true, ok, fail, results });
-});
-
-app.post('/api/action/confirm', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { mainUrl, confirmUrl, type, targetAccounts } = req.body;
-  const mainTarget = type === 'post' ? extractPostId(mainUrl) : extractCommentId(mainUrl);
-  const confirmTarget = extractCommentId(confirmUrl);
-  if (!mainTarget || !confirmTarget) return res.status(400).json({ error: 'روابط غير صالحة' });
-
-  let accs = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  if (targetAccounts === 'personal') accs = accs.filter((a: any) => a.type !== 'page');
-  else if (targetAccounts === 'pages') accs = accs.filter((a: any) => a.type === 'page');
-
-  let ok = 0, fail = 0;
-  const results = [];
-  for (const a of accs) {
-    const accToken = decryptString(a.token);
-    const r1 = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${mainTarget}/reactions`, "POST", { type: "LIKE" }, null, accToken);
-    const r2 = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${confirmTarget}/reactions`, "POST", { type: "LIKE" }, null, accToken);
-    if (r1 && !r1.error && r2 && !r2.error) {
-      ok++; results.push({ name: a.name, success: true });
-    } else {
-      fail++; results.push({ name: a.name, success: false });
-    }
-    await pause();
-  }
-  res.json({ success: true, ok, fail, results });
-});
-
-app.post('/api/action/unreact', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { url, type, toRemoveIds, targetAccounts } = req.body;
-  const targetId = type === 'post' ? extractPostId(url) : extractCommentId(url);
-  if (!targetId) return res.status(400).json({ error: 'رابط غير صالح' });
-
-  let accs = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  if (targetAccounts === 'personal') accs = accs.filter((a: any) => a.type !== 'page');
-  else if (targetAccounts === 'pages') accs = accs.filter((a: any) => a.type === 'page');
-
-  let ok = 0, fail = 0;
-  const results = [];
-  for (const a of accs) {
-    if (toRemoveIds.length === 0 || toRemoveIds.includes(a.acc_id)) {
-      try {
-        const accToken = decryptString(a.token);
-        const response = await axios.delete(`https://graph.facebook.com/v19.0/${targetId}/likes`, { params: { access_token: accToken }, timeout: 15000 });
-        if (response.status === 200) {
-          ok++; results.push({ name: a.name, success: true });
-        } else {
-          fail++; results.push({ name: a.name, success: false });
-        }
-      } catch (e) {
         fail++; results.push({ name: a.name, success: false });
       }
       await pause();
     }
+    res.json({ success: true, ok, fail, results });
+  } catch (err) {
+    res.status(500).json({ error: 'Action failed' });
   }
-  res.json({ success: true, ok, fail, results });
 });
 
-app.post('/api/action/follow', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { pageId, count, targetAccounts } = req.body;
-  
-  let accs = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  if (targetAccounts === 'personal') accs = accs.filter((a: any) => a.type !== 'page');
-  else if (targetAccounts === 'pages') accs = accs.filter((a: any) => a.type === 'page');
+apiRouter.post('/action/unreact', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { url, targetAccounts } = req.body;
+    const target = extractId(url);
+    if (!target) return res.status(400).json({ error: 'Invalid URL' });
+    
+    let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
+    if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
+    if (targetAccounts === 'pages') accs = accs.filter(a => a.type === 'page');
 
-  if (count && count !== 'all') accs = accs.slice(0, parseInt(count, 10));
-
-  let ok = 0, fail = 0;
-  const results = [];
-  for (const a of accs) {
-    const accToken = decryptString(a.token);
-    const r = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${pageId}/likes`, "POST", {}, null, accToken);
-    if (r && !r.error) {
-      ok++; results.push({ name: a.name, success: true });
-    } else {
-      fail++; results.push({ name: a.name, success: false });
+    let ok = 0, fail = 0;
+    const results = [];
+    for (const a of accs) {
+      if (!a.token) continue;
+      const accToken = decryptToken(a.token);
+      const r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/likes`, "DELETE", {}, accToken);
+      if (r && !r.error) {
+        ok++; results.push({ name: a.name, success: true });
+      } else {
+        fail++; results.push({ name: a.name, success: false });
+      }
+      await pause();
     }
-    await pause();
+    res.json({ success: true, ok, fail, results });
+  } catch (err) {
+    res.status(500).json({ error: 'Action failed' });
   }
-  res.json({ success: true, ok, fail, results });
 });
 
-app.post('/api/action/comment', requireAuth, async (req, res) => {
-  const userId = (req as any).userId;
-  const { url, type, count, words, isRandom, targetAccounts } = req.body;
-  const targetId = type === 'post' ? extractPostId(url) : extractCommentId(url);
-  if (!targetId) return res.status(400).json({ error: 'رابط غير صالح' });
+apiRouter.post('/action/comment', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { url, words, count, isRandom, targetAccounts } = req.body;
+    const target = extractId(url);
+    if (!target) return res.status(400).json({ error: 'Invalid URL' });
+    
+    let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
+    if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
+    if (targetAccounts === 'pages') accs = accs.filter(a => a.type === 'page');
 
-  let accs = await query('SELECT * FROM accounts WHERE user_id = ?', [userId]);
-  if (targetAccounts === 'personal') accs = accs.filter((a: any) => a.type !== 'page');
-  else if (targetAccounts === 'pages') accs = accs.filter((a: any) => a.type === 'page');
+    if (accs.length === 0) return res.status(400).json({ error: 'No accounts available' });
 
-  if (accs.length === 0) return res.status(400).json({ error: 'لا يوجد حسابات' });
+    let ok = 0, fail = 0;
+    const results = [];
+    const loopCount = parseInt(count, 10);
+    
+    const commentWords = isRandom ? Array.from({length: loopCount}, () => 
+      Array.from({length: 8}, () => "ضصثقفغعهخحجدشسيبلاتنمكطئءؤرلاىةوزظ".charAt(Math.floor(Math.random() * 34))).join('')
+    ) : words;
 
-  const commentWords = isRandom ? Array.from({length: parseInt(count, 10)}, () => {
-    const len = Math.floor(Math.random() * 8) + 5;
-    return Array.from({length: len}, () => "ضصثقفغعهخحجدشسيبلاتنمكطئءؤرلاىةوزظ".charAt(Math.floor(Math.random() * 34))).join('');
-  }) : words;
-
-  let ok = 0, fail = 0;
-  const results = [];
-  const loopCount = parseInt(count, 10);
-  for (let i = 0; i < loopCount; i++) {
-    const a = accs[i % accs.length];
-    const accToken = decryptString(a.token);
-    const message = commentWords[Math.floor(Math.random() * commentWords.length)];
-    const r = await makeFacebookRequest(`https://graph.facebook.com/v19.0/${targetId}/comments`, "POST", { message }, null, accToken);
-    if (r && !r.error) {
-      ok++; results.push({ name: a.name, success: true, message });
-    } else {
-      fail++; results.push({ name: a.name, success: false, message });
+    for (let i = 0; i < loopCount; i++) {
+      const a = accs[i % accs.length];
+      if (!a.token) continue;
+      const accToken = decryptToken(a.token);
+      const message = commentWords[Math.floor(Math.random() * commentWords.length)];
+      
+      const r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/comments`, "POST", { message }, accToken);
+      if (r && !r.error) {
+        ok++; results.push({ name: a.name, success: true, message });
+      } else {
+        fail++; results.push({ name: a.name, success: false, message });
+      }
+      await pause();
     }
-    await pause();
+    res.json({ success: true, ok, fail, results });
+  } catch (err) {
+    res.status(500).json({ error: 'Action failed' });
   }
-  res.json({ success: true, ok, fail, results });
 });
+
+// Mount the API router
+app.use('/api', apiRouter);
+
+
 
 
 async function startServer() {
-  await initDb();
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
@@ -626,12 +503,13 @@ async function startServer() {
     app.use(express.static(distPath));
     app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
-  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://localhost:${PORT}`));
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  });
 }
 
-if (!process.env.VERCEL) {
-  startServer();
-}
+// Only start the server locally (Vercel would use export default app, but we are standardizing Node.js)
+startServer();
 
 export default app;
-

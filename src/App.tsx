@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, UserPlus, LogOut, MessageSquare, ThumbsUp, CheckCircle, UserCheck, Trash2, Award, ChevronRight, Sliders, LayoutDashboard, ShieldAlert } from 'lucide-react';
-import { cn } from './lib/utils';
+import { Users, UserPlus, LogOut, MessageSquare, ThumbsUp, CheckCircle, UserCheck, Trash2, ShieldAlert, Sliders, ChevronRight, Zap, Target, Activity } from 'lucide-react';
 import { User } from './types';
-
 import AuthScreen from './components/AuthScreen';
 import AccountsList from './components/AccountsList';
 import AddAccounts from './components/AddAccounts';
 import ActionsPanel from './components/ActionsPanel';
 import AdminPanel from './components/AdminPanel';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState('home');
+  const [showAuth, setShowAuth] = useState<'login' | 'register' | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -55,8 +55,8 @@ export default function App() {
         return;
       }
       const res = await axios.get('/api/auth/me');
-      if (res.data.authenticated) {
-        setUser(res.data);
+      if (res.data && res.data.authenticated) {
+        setUser(res.data.user);
       } else {
         setUser(null);
       }
@@ -75,16 +75,122 @@ export default function App() {
     }
     localStorage.removeItem('token');
     setUser(null);
+    setCurrentTab('home');
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-yellow-500">جاري التحميل...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+      </div>
+    );
   }
 
+  // --- Landing Page for Unauthenticated Users ---
   if (!user) {
-    return <AuthScreen onLogin={setUser} />;
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-yellow-500/30 overflow-x-hidden" dir="rtl">
+        {/* Navigation */}
+        <nav className="p-6 border-b border-gray-800/50 flex justify-between items-center bg-gray-950/80 backdrop-blur-md fixed top-0 w-full z-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-700 flex items-center justify-center shadow-lg shadow-yellow-900/20">
+              <Sliders className="w-5 h-5 text-gray-900" />
+            </div>
+            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600">
+              سوشيال اوتو
+            </span>
+          </div>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setShowAuth('login')}
+              className="text-gray-300 hover:text-white px-4 py-2 font-medium transition"
+            >
+              تسجيل الدخول
+            </button>
+            <button 
+              onClick={() => setShowAuth('register')}
+              className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-6 py-2 rounded-full font-bold transition shadow-lg shadow-yellow-500/20"
+            >
+              حساب جديد
+            </button>
+          </div>
+        </nav>
+
+        {/* Hero Section */}
+        <main className="pt-32 pb-20 px-6">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">
+            <div className="flex-1 space-y-8 text-center lg:text-right">
+              <h1 className="text-5xl md:text-7xl font-extrabold leading-tight tracking-tight text-white">
+                إدارة صفحاتك<br />
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600">
+                  بذكاء وسرعة
+                </span>
+              </h1>
+              <p className="text-xl text-gray-400 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
+                أداة متكاملة للتحكم في حساباتك، زيادة التفاعل، وإدارة التعليقات بطريقة تلقائية آمنة وفعالة، صُممت خصيصاً للمسوقين وصناع المحتوى.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
+                <button 
+                  onClick={() => setShowAuth('register')}
+                  className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-8 py-4 rounded-full font-bold text-lg transition shadow-xl shadow-yellow-500/20 flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-5 h-5" />
+                  ابدأ الآن مجاناً
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 relative">
+              <div className="absolute inset-0 bg-gradient-to-tr from-yellow-500/20 to-transparent blur-3xl -z-10 rounded-full"></div>
+              <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl shadow-yellow-900/10 grid grid-cols-2 gap-4">
+                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+                      <ThumbsUp className="text-blue-500 w-6 h-6" />
+                    </div>
+                    <span className="text-gray-300 font-medium">تفاعلات تلقائية</span>
+                 </div>
+                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                      <MessageSquare className="text-green-500 w-6 h-6" />
+                    </div>
+                    <span className="text-gray-300 font-medium">ردود ذكية</span>
+                 </div>
+                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
+                      <Users className="text-purple-500 w-6 h-6" />
+                    </div>
+                    <span className="text-gray-300 font-medium">إدارة متعددة</span>
+                 </div>
+                 <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700/50 flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                      <Activity className="text-yellow-500 w-6 h-6" />
+                    </div>
+                    <span className="text-gray-300 font-medium">تقارير سريعة</span>
+                 </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Auth Modal overlay */}
+        {showAuth && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+             <div className="relative w-full max-w-md my-8">
+               <button 
+                 onClick={() => setShowAuth(null)}
+                 className="absolute -top-4 -right-4 w-8 h-8 bg-gray-800 text-gray-400 hover:text-white rounded-full flex items-center justify-center z-10 shadow-lg border border-gray-700"
+               >
+                 ✕
+               </button>
+               <AuthScreen onLogin={setUser} initialMode={showAuth} />
+             </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
+  // --- Authenticated Dashboard ---
   const tabs = [
     { id: 'accounts', label: 'حساباتي', icon: Users },
     { id: 'add', label: 'إضافة حسابات', icon: UserPlus },
@@ -100,20 +206,20 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 font-sans text-gray-200">
+    <div className="min-h-screen bg-gray-950 font-sans text-gray-200" dir="rtl">
       <header className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-700 flex items-center justify-center shadow-lg shadow-yellow-900/20">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-700 flex items-center justify-center shadow-lg shadow-yellow-900/20 cursor-pointer" onClick={() => setCurrentTab('home')}>
             <Sliders className="w-5 h-5 text-gray-900" />
           </div>
-          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600">
+          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-yellow-600 cursor-pointer" onClick={() => setCurrentTab('home')}>
             لوحة التحكم
           </h1>
-          <div className="hidden sm:block mr-4">
-            <span className="text-sm text-gray-400">أهلاً بك، <span className="text-white">{user.username}</span></span>
-            {user.role !== 'admin' && user.expiresAt !== null && user.expiresAt !== undefined && !isNaN(Number(user.expiresAt)) && (
-              <span className="text-xs text-gray-500 mr-2">
-                (ينتهي: {Number(user.expiresAt) === 0 ? 'غير فعال' : new Date(Number(user.expiresAt)).toLocaleDateString('ar-EG')})
+          <div className="hidden sm:block mr-4 border-r border-gray-800 pr-4">
+            <span className="text-sm text-gray-400">أهلاً بك، <span className="text-white font-medium">{user.username}</span></span>
+            {user.role !== 'admin' && user.expires_at && (
+              <span className="text-xs text-yellow-500/80 mr-2 bg-yellow-500/10 px-2 py-0.5 rounded">
+                ينتهي: {new Date(user.expires_at).toLocaleDateString('ar-EG')}
               </span>
             )}
           </div>
@@ -126,44 +232,47 @@ export default function App() {
           <span className="hidden sm:inline">تسجيل الخروج</span>
         </button>
       </header>
-
-      <main className="p-6 md:p-8 max-w-7xl mx-auto">
-        {currentTab === 'home' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setCurrentTab(tab.id)}
-                className="group p-6 bg-gray-900 border border-gray-800 rounded-2xl hover:border-yellow-500/50 hover:bg-gray-800 transition-all flex flex-col items-center justify-center gap-4 text-center aspect-square shadow-xl hover:shadow-2xl hover:-translate-y-1"
-              >
-                <div className="w-16 h-16 rounded-2xl bg-gray-950 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                  <tab.icon className="w-8 h-8 text-yellow-500" />
-                </div>
-                <span className="font-bold text-lg text-white group-hover:text-yellow-500 transition-colors">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <button
-              onClick={() => setCurrentTab('home')}
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition bg-gray-900 px-5 py-2.5 rounded-xl border border-gray-800 w-max shadow-sm hover:border-gray-700"
-            >
-              <ChevronRight className="w-5 h-5" />
-              <span className="font-bold">العودة للقائمة الرئيسية</span>
-            </button>
-            <div className="bg-gray-900 rounded-3xl p-6 md:p-10 shadow-2xl border border-gray-800">
-              {currentTab === 'accounts' && <AccountsList />}
-              {currentTab === 'add' && <AddAccounts />}
-              {currentTab === 'react' && <ActionsPanel type="react" />}
-              {currentTab === 'confirm' && <ActionsPanel type="confirm" />}
-              {currentTab === 'unreact' && <ActionsPanel type="unreact" />}
-              {currentTab === 'follow' && <ActionsPanel type="follow" />}
-              {currentTab === 'comment' && <ActionsPanel type="comment" />}
-              {currentTab === 'admin' && user.role === 'admin' && <AdminPanel />}
+      
+      <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+        <ErrorBoundary>
+          {currentTab === 'home' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setCurrentTab(tab.id)}
+                  className="group p-6 bg-gray-900 border border-gray-800 rounded-2xl hover:border-yellow-500/50 hover:bg-gray-800 transition-all flex flex-col items-center justify-center gap-4 text-center aspect-[4/3] shadow-lg hover:shadow-xl hover:-translate-y-1"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gray-950 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                    <tab.icon className="w-7 h-7 text-yellow-500" />
+                  </div>
+                  <span className="font-bold text-lg text-white group-hover:text-yellow-500 transition-colors">{tab.label}</span>
+                </button>
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="space-y-6">
+              <button
+                onClick={() => setCurrentTab('home')}
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition bg-gray-900 px-5 py-2.5 rounded-xl border border-gray-800 w-max shadow-sm hover:border-gray-700"
+              >
+                <ChevronRight className="w-5 h-5" />
+                <span className="font-bold">العودة للقائمة الرئيسية</span>
+              </button>
+              
+              <div className="bg-gray-900 rounded-3xl p-4 sm:p-6 md:p-10 shadow-2xl border border-gray-800">
+                {currentTab === 'accounts' && <AccountsList />}
+                {currentTab === 'add' && <AddAccounts />}
+                {currentTab === 'react' && <ActionsPanel type="react" />}
+                {currentTab === 'confirm' && <ActionsPanel type="confirm" />}
+                {currentTab === 'unreact' && <ActionsPanel type="unreact" />}
+                {currentTab === 'follow' && <ActionsPanel type="follow" />}
+                {currentTab === 'comment' && <ActionsPanel type="comment" />}
+                {currentTab === 'admin' && user.role === 'admin' && <AdminPanel />}
+              </div>
+            </div>
+          )}
+        </ErrorBoundary>
       </main>
     </div>
   );

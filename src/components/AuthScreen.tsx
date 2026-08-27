@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { Lock, User as UserIcon, AlertCircle } from 'lucide-react';
 import { User } from '../types';
-import { Lock } from 'lucide-react';
 
 interface Props {
   onLogin: (user: User) => void;
+  initialMode?: 'login' | 'register';
 }
 
-export default function AuthScreen({ onLogin }: Props) {
-  const [isLogin, setIsLogin] = useState(true);
+export default function AuthScreen({ onLogin, initialMode = 'login' }: Props) {
+  const [isLogin, setIsLogin] = useState(initialMode === 'login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,82 +19,92 @@ export default function AuthScreen({ onLogin }: Props) {
     e.preventDefault();
     setError('');
     setLoading(true);
+
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
       const res = await axios.post(endpoint, { username, password });
-      if (res.data.token) {
+      
+      if (res.data.success && res.data.token) {
         localStorage.setItem('token', res.data.token);
+        onLogin(res.data.user);
       }
-      onLogin(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'بيانات الدخول غير صحيحة');
+      setError(err.response?.data?.error || 'حدث خطأ في الاتصال بالخادم');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md bg-gray-900 rounded-2xl shadow-2xl border border-gray-800 p-8">
-        <div className="flex justify-center mb-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-yellow-600 to-yellow-800 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-900/20">
-            <Lock className="w-8 h-8" />
-          </div>
-        </div>
-        <h2 className="text-2xl font-bold text-center text-white mb-2">
-          {isLogin ? 'تسجيل الدخول' : 'حساب جديد'}
+    <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl w-full" dir="rtl">
+      <div className="text-center mb-8">
+        <h2 className="text-3xl font-bold text-white mb-2">
+          {isLogin ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
         </h2>
-        <p className="text-center text-gray-400 mb-8">
-          {isLogin ? 'الرجاء إدخال بياناتك للمتابعة' : 'أدخل بياناتك لإنشاء الحساب'}
+        <p className="text-gray-400">
+          {isLogin ? 'مرحباً بعودتك إلى المنصة' : 'انضم إلينا لإدارة حساباتك'}
         </p>
+      </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm text-center font-medium">
-            {error}
-          </div>
-        )}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl mb-6 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="font-medium text-sm">{error}</span>
+        </div>
+      )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">اسم المستخدم</label>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">اسم المستخدم</label>
+          <div className="relative">
+            <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
             <input
               type="text"
-              required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-all placeholder-gray-600"
+              className="w-full bg-gray-950 border border-gray-800 text-white rounded-xl py-3 pr-12 pl-4 focus:outline-none focus:border-yellow-500 transition-colors"
               placeholder="أدخل اسم المستخدم"
+              required
+              minLength={3}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">كلمة المرور</label>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">كلمة المرور</label>
+          <div className="relative">
+            <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
             <input
               type="password"
-              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-all placeholder-gray-600"
+              className="w-full bg-gray-950 border border-gray-800 text-white rounded-xl py-3 pr-12 pl-4 focus:outline-none focus:border-yellow-500 transition-colors"
               placeholder="أدخل كلمة المرور"
+              required
+              minLength={6}
             />
           </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 bg-yellow-600 text-white rounded-xl font-bold text-base hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 disabled:opacity-50 transition-all shadow-lg shadow-yellow-900/20"
-          >
-            {loading ? 'يرجى الانتظار...' : (isLogin ? 'تسجيل الدخول' : 'إنشاء حساب')}
-          </button>
-        </form>
-
-        <div className="mt-8 text-center text-sm text-gray-400">
-          {isLogin ? "ليس لديك حساب؟ " : "لديك حساب بالفعل؟ "}
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-yellow-500 font-bold hover:text-yellow-400 transition-colors focus:outline-none"
-          >
-            {isLogin ? 'سجل الآن' : 'سجل الدخول'}
-          </button>
         </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-bold py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? 'جاري التحميل...' : (isLogin ? 'دخول' : 'تسجيل')}
+        </button>
+      </form>
+
+      <div className="mt-6 text-center">
+        <button
+          onClick={() => {
+            setIsLogin(!isLogin);
+            setError('');
+          }}
+          className="text-gray-400 hover:text-yellow-500 transition-colors text-sm"
+        >
+          {isLogin ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب بالفعل؟ سجل دخولك'}
+        </button>
       </div>
     </div>
   );
