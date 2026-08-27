@@ -100,7 +100,7 @@ export default function AdminPanel() {
                       <span className="text-yellow-500 font-bold">عضوية دائمة</span>
                     ) : u.expiresAt !== null && u.expiresAt > 0 ? (
                       <span className={Date.now() > u.expiresAt ? 'text-red-400 font-bold' : 'text-gray-300'}>
-                        {new Date(u.expiresAt).toLocaleDateString('ar-EG')}
+                        {u.expiresAt ? new Date(Number(u.expiresAt)).toLocaleDateString('ar-EG') : 'غير محدد'}
                       </span>
                     ) : (
                       <span className="text-red-400 font-bold">غير فعال</span>

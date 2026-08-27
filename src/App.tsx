@@ -111,9 +111,9 @@ export default function App() {
           </h1>
           <div className="hidden sm:block mr-4">
             <span className="text-sm text-gray-400">أهلاً بك، <span className="text-white">{user.username}</span></span>
-            {user.role !== 'admin' && user.expiresAt !== null && (
+            {user.role !== 'admin' && user.expiresAt !== null && user.expiresAt !== undefined && !isNaN(Number(user.expiresAt)) && (
               <span className="text-xs text-gray-500 mr-2">
-                (ينتهي: {user.expiresAt === 0 ? 'غير فعال' : new Date(user.expiresAt).toLocaleDateString('ar-EG')})
+                (ينتهي: {Number(user.expiresAt) === 0 ? 'غير فعال' : new Date(Number(user.expiresAt)).toLocaleDateString('ar-EG')})
               </span>
             )}
           </div>
