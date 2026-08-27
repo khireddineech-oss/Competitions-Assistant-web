@@ -2,19 +2,36 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import axios from 'axios';
 import crypto from 'crypto';
 import cookieParser from 'cookie-parser';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
-import { initDb, query, execute } from './src/db.ts';
+import { initDb, query, execute } from './src/db';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json());
 app.use(cookieParser());
+
+let dbInitialized = false;
+let dbInitPromise = null;
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    if (!dbInitPromise) {
+      dbInitPromise = initDb().then(() => {
+        dbInitialized = true;
+      }).catch(err => {
+        console.error("Database initialization failed:", err);
+        dbInitPromise = null;
+      });
+    }
+    await dbInitPromise;
+  }
+  next();
+});
+
 
 // --- AES Encryption at Rest ---
 const _AES_PASSWORD = process.env.AES_PASSWORD || "58Zk72Mf2Xo60Dh4Gi87Xs45Yu20Yn0Td48Bq98Ya20Rd28Si27Ie29Wj97Ly32Aq55De37Qd8Ul";
@@ -597,9 +614,11 @@ app.post('/api/action/comment', requireAuth, async (req, res) => {
   res.json({ success: true, ok, fail, results });
 });
 
+
 async function startServer() {
   await initDb();
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
@@ -610,4 +629,9 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://localhost:${PORT}`));
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+
