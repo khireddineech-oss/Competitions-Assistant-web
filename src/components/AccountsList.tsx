@@ -104,8 +104,8 @@ export default function AccountsList() {
         {accounts.length === 0 && (
           <div className="col-span-full bg-slate-900 border border-slate-800 p-12 rounded-3xl text-center">
             <Link2 className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">لا توجد قنوات متصلة</h3>
-            <p className="text-slate-400">ابدأ بربط قنواتك من خلال صفحة "ربط حساب جديدة"</p>
+            <h3 className="text-xl font-bold text-white mb-2">لا توجد حسابات متصلة</h3>
+            <p className="text-slate-400">ابدأ بربط حساباتك من خلال صفحة "إضافة حسابات"</p>
           </div>
         )}
       </div>

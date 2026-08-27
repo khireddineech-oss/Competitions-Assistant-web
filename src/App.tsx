@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import {  LogOut, LayoutDashboard, Link2, PlusCircle, Settings, PlayCircle, StopCircle, MessageSquare, CheckSquare, Users, Loader2, Bell , ChevronRight } from 'lucide-react';
+import {   LogOut, LayoutDashboard, Link2, PlusCircle, Settings, PlayCircle, StopCircle, MessageSquare, CheckSquare, Users, Loader2, Bell , ChevronRight , TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AuthScreen from './components/AuthScreen';
 import AccountsList from './components/AccountsList';
@@ -55,7 +55,7 @@ function App() {
     setCurrentTab('home');
   };
 
-  const siteName = settings.siteName || 'أوتوميت برو';
+  const siteName = settings.siteName || 'KHIRO INFO';
 
   if (loading) {
     return (
@@ -72,7 +72,7 @@ function App() {
         <nav className="p-6 flex justify-between items-center max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-              <PlayCircle className="text-white w-6 h-6" />
+              <TrendingUp className="text-white w-6 h-6" />
             </div>
             <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-indigo-400 to-purple-400">{siteName}</span>
           </div>
@@ -88,7 +88,7 @@ function App() {
               أدر نشاطك الرقمي <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">بذكاء وسهولة</span>
             </h1>
             <p className="text-slate-400 text-lg mb-8 leading-relaxed">
-              منصة متكاملة لأتمتة المهام اليومية، تنظيم القنوات، وإدارة الأنشطة بفعالية. نوفر لك الأدوات لتبسيط سير عملك وزيادة إنتاجيتك بخطوات بسيطة.
+              منصة متكاملة لأتمتة المهام اليومية، تنظيم الحسابات، وإدارة المهام بفعالية. نوفر لك الأدوات لتبسيط سير عملك وزيادة إنتاجيتك بخطوات بسيطة.
             </p>
             <button onClick={() => setShowAuth('register')} className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:shadow-xl hover:shadow-indigo-500/30 transition-all flex items-center gap-3">
               <PlayCircle className="w-6 h-6" />
@@ -193,7 +193,7 @@ function App() {
         <aside className="hidden md:flex flex-col w-72 bg-slate-900 border-l border-slate-800 sticky top-0 h-screen overflow-y-auto">
           <div className="p-6 flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <PlayCircle className="text-white w-5 h-5" />
+              <TrendingUp className="text-white w-5 h-5" />
             </div>
             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-l from-indigo-400 to-purple-400">{siteName}</span>
           </div>

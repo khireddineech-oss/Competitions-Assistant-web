@@ -50,13 +50,13 @@ export default function ActionsPanel({ type, title, desc }: Props) {
       <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl shadow-xl space-y-6">
         {type !== 'confirm' && (
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">معرف الهدف (ID)</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">رابط المنشور أو معرف الهدف (Link or ID)</label>
             <input
               type="text"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-3 px-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-              placeholder="مثال: 1234567890"
+              placeholder="مثال: 1459976664884 أو رابط منشور كامل"
               required
               dir="ltr"
             />
@@ -90,7 +90,7 @@ export default function ActionsPanel({ type, title, desc }: Props) {
 
         {type === 'comment' && (
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">الردود المجدولة (رد في كل سطر)</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">تعليقات مجدولة (تعليق في كل سطر)</label>
             <textarea
               value={comments}
               onChange={(e) => setComments(e.target.value)}

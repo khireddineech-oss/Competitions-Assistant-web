@@ -380,7 +380,11 @@ apiRouter.delete('/admin/users/:id', requireAuth, requireAdmin, async (req, res)
 // --- Facebook Action Automation Routes ---
 const pause = () => new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
 function extractId(url: string) {
-  const match = url.match(/(?:fbid=|posts\/|videos\/|v=)([0-9]+)/);
+  if (!url) return null;
+  // If it's already just a number, return it
+  if (/^\d+$/.test(url.trim())) return url.trim();
+  // Otherwise, match common facebook patterns
+  const match = url.match(/(?:fbid=|posts\/|videos\/|v=|story_fbid=|id=|groups\/[^\/]+\/permalink\/|pfbid)([0-9a-zA-Z]+)/);
   return match ? match[1] : null;
 }
 
