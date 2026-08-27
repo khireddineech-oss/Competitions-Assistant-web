@@ -206,7 +206,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 font-sans text-gray-200" dir="rtl">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-950 font-sans text-gray-200" dir="rtl">
       <header className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/80 backdrop-blur-md sticky top-0 z-10 shadow-lg">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-700 flex items-center justify-center shadow-lg shadow-yellow-900/20 cursor-pointer" onClick={() => setCurrentTab('home')}>
@@ -219,7 +220,7 @@ export default function App() {
             <span className="text-sm text-gray-400">أهلاً بك، <span className="text-white font-medium">{user.username}</span></span>
             {user.role !== 'admin' && user.expires_at && (
               <span className="text-xs text-yellow-500/80 mr-2 bg-yellow-500/10 px-2 py-0.5 rounded">
-                ينتهي: {new Date(user.expires_at).toLocaleDateString('ar-EG')}
+                ينتهي: {(() => { try { return new Date(user.expires_at).toLocaleDateString('ar-EG'); } catch(e) { return 'تاريخ غير صالح'; } })()}
               </span>
             )}
           </div>
@@ -244,7 +245,7 @@ export default function App() {
                   className="group p-6 bg-gray-900 border border-gray-800 rounded-2xl hover:border-yellow-500/50 hover:bg-gray-800 transition-all flex flex-col items-center justify-center gap-4 text-center aspect-[4/3] shadow-lg hover:shadow-xl hover:-translate-y-1"
                 >
                   <div className="w-14 h-14 rounded-2xl bg-gray-950 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                    <tab.icon className="w-7 h-7 text-yellow-500" />
+                    {(() => { const Icon = tab.icon; return <Icon className="w-7 h-7 text-yellow-500" />; })()}
                   </div>
                   <span className="font-bold text-lg text-white group-hover:text-yellow-500 transition-colors">{tab.label}</span>
                 </button>
@@ -275,5 +276,6 @@ export default function App() {
         </ErrorBoundary>
       </main>
     </div>
+    </ErrorBoundary>
   );
 }
