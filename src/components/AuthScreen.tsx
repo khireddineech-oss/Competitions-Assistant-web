@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Lock, User as UserIcon, AlertCircle, PlayCircle, Loader2 } from 'lucide-react';
+import { Lock, User as UserIcon, AlertCircle, Loader2, TrendingUp } from 'lucide-react';
 import { User } from '../types';
 
 interface Props {
@@ -36,36 +36,36 @@ export default function AuthScreen({ onLogin, initialMode = 'login' }: Props) {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl shadow-indigo-900/20 w-full" dir="rtl">
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
-          <PlayCircle className="text-white w-8 h-8" />
+    <div className="bg-[#111] border border-zinc-800/80 rounded-2xl p-8 shadow-2xl w-full" dir="rtl">
+      <div className="mb-8">
+        <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center mb-6">
+          <TrendingUp className="text-black w-6 h-6" />
         </div>
-        <h2 className="text-3xl font-extrabold text-white mb-2">
+        <h2 className="text-2xl font-bold tracking-tight text-white mb-2">
           {isLogin ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
         </h2>
-        <p className="text-slate-400">
-          {isLogin ? 'مرحباً بعودتك إلى مساحة العمل' : 'انضم إلينا لإدارة حساباتك بذكاء'}
+        <p className="text-sm text-zinc-400">
+          {isLogin ? 'مرحباً بعودتك إلى مساحة العمل الخاصة بك.' : 'أدخل بياناتك لإنشاء حساب والبدء فوراً.'}
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl mb-6 flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span className="font-medium text-sm">{error}</span>
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-lg mb-6 flex items-start gap-3 text-sm">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <span className="font-medium">{error}</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-2">اسم المستخدم</label>
+          <label className="block text-sm font-medium text-zinc-400 mb-1.5">اسم المستخدم</label>
           <div className="relative">
-            <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+            <UserIcon className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-3 pr-12 pl-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+              className="w-full bg-[#1a1a1a] border border-zinc-800 text-white rounded-lg py-2.5 pr-10 pl-4 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-colors text-sm"
               placeholder="أدخل اسم المستخدم"
               required
               minLength={3}
@@ -74,14 +74,14 @@ export default function AuthScreen({ onLogin, initialMode = 'login' }: Props) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-2">كلمة المرور</label>
+          <label className="block text-sm font-medium text-zinc-400 mb-1.5">كلمة المرور</label>
           <div className="relative">
-            <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+            <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-3 pr-12 pl-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+              className="w-full bg-[#1a1a1a] border border-zinc-800 text-white rounded-lg py-2.5 pr-10 pl-4 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-colors text-sm"
               placeholder="أدخل كلمة المرور"
               required
               minLength={6}
@@ -92,9 +92,9 @@ export default function AuthScreen({ onLogin, initialMode = 'login' }: Props) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full bg-white hover:bg-zinc-200 text-black font-medium text-sm py-2.5 rounded-lg transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           {isLogin ? 'دخول مساحة العمل' : 'تأكيد التسجيل'}
         </button>
       </form>
@@ -105,7 +105,7 @@ export default function AuthScreen({ onLogin, initialMode = 'login' }: Props) {
             setIsLogin(!isLogin);
             setError('');
           }}
-          className="text-slate-400 hover:text-indigo-400 transition-colors text-sm font-medium"
+          className="text-zinc-500 hover:text-zinc-300 transition-colors text-sm font-medium"
         >
           {isLogin ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب بالفعل؟ سجل دخولك'}
         </button>

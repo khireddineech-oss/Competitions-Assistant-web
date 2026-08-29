@@ -28,11 +28,11 @@ export default function AddAccounts() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-          <PlusCircle className="w-6 h-6 text-indigo-400" /> إضافة حسابات
+      <div className="mb-8 border-b border-zinc-800/50 pb-6">
+        <h2 className="text-2xl font-bold text-white mb-1.5 flex items-center gap-2">
+          إضافة حسابات
         </h2>
-        <p className="text-slate-400">أدخل مفاتيح الاتصال (Connection Keys) لربط الحسابات بالنظام، كل مفتاح في سطر مستقل.</p>
+        <p className="text-zinc-500 text-sm">أدخل مفاتيح الاتصال (Connection Keys) لربط الحسابات بالنظام، كل مفتاح في سطر مستقل.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -40,37 +40,37 @@ export default function AddAccounts() {
           <textarea
             value={tokensText}
             onChange={(e) => setTokensText(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 text-white rounded-2xl p-6 h-64 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono text-sm leading-relaxed"
+            className="w-full bg-[#111] border border-zinc-800 text-white rounded-xl p-6 h-64 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-colors font-mono text-sm leading-relaxed"
             placeholder="أدخل مفاتيح الاتصال هنا...&#10;مفتاح 1&#10;مفتاح 2"
             required
             dir="ltr"
           />
-          <div className="absolute top-4 right-4 text-slate-600">
-            <Key className="w-6 h-6" />
+          <div className="absolute top-4 right-4 text-zinc-600">
+            <Key className="w-5 h-5" />
           </div>
         </div>
 
         <button
           type="submit"
           disabled={loading || !tokensText.trim()}
-          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
+          className="w-full bg-white hover:bg-zinc-200 text-black font-medium text-sm py-3.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {loading && <Loader2 className="w-6 h-6 animate-spin" />}
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           تأكيد وإضافة الحسابات
         </button>
       </form>
 
       {result && (
-        <div className="mt-8 bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg">
-          <h3 className="font-bold text-white mb-4 text-lg">نتيجة العملية</h3>
+        <div className="mt-8 bg-[#111] border border-zinc-800/80 p-6 rounded-xl shadow-sm">
+          <h3 className="font-medium text-white mb-4 text-sm">نتيجة العملية</h3>
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl text-center">
-              <span className="block text-2xl font-bold text-emerald-400">{result.success}</span>
-              <span className="text-sm text-emerald-500/80">ناجح</span>
+            <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-lg text-center">
+              <span className="block text-2xl font-medium text-green-400">{result.success}</span>
+              <span className="text-xs text-green-500 mt-1 block">ناجح</span>
             </div>
-            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-center">
-              <span className="block text-2xl font-bold text-red-400">{result.failed}</span>
-              <span className="text-sm text-red-500/80">فشل</span>
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-lg text-center">
+              <span className="block text-2xl font-medium text-red-400">{result.failed}</span>
+              <span className="text-xs text-red-500 mt-1 block">فشل</span>
             </div>
           </div>
         </div>
