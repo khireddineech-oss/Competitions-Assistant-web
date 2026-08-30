@@ -1,4 +1,6 @@
+const fs = require('fs');
 
+const actionsPanelTsx = `
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Loader2, PlayCircle, Users, FileText, CheckCircle2, MessageSquare, LayoutTemplate } from 'lucide-react';
@@ -52,12 +54,12 @@ export default function ActionsPanel({ type, title, desc }: Props) {
 
     if (type === 'react') payload.reactions = selectedReactions;
     if (type === 'comment') {
-      payload.words = comments.split('\n').filter(c => c.trim());
+      payload.words = comments.split('\\n').filter(c => c.trim());
       payload.isRandom = isRandom;
     }
 
     try {
-      const res = await axios.post(`/api/action/${type}`, payload);
+      const res = await axios.post(\`/api/action/\${type}\`, payload);
       setResult(res.data);
     } catch (err: any) {
       alert(err.response?.data?.error || 'حدث خطأ. تأكد من صحة الرابط وأن لديك حسابات متصلة.');
@@ -101,17 +103,17 @@ export default function ActionsPanel({ type, title, desc }: Props) {
               <button
                 type="button"
                 onClick={() => setTargetType('post')}
-                className={`py-3 px-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 border ${targetType === 'post' ? 'bg-white text-black border-white shadow-sm' : 'bg-[#1a1a1a] border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700'}`}
+                className={\`py-3 px-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 border \${targetType === 'post' ? 'bg-white text-black border-white shadow-sm' : 'bg-[#1a1a1a] border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700'}\`}
               >
-                <LayoutTemplate className={`w-4 h-4 ${targetType === 'post' ? 'text-black' : 'text-zinc-500'}`} />
+                <LayoutTemplate className={\`w-4 h-4 \${targetType === 'post' ? 'text-black' : 'text-zinc-500'}\`} />
                 منشور (Post)
               </button>
               <button
                 type="button"
                 onClick={() => setTargetType('comment')}
-                className={`py-3 px-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 border ${targetType === 'comment' ? 'bg-white text-black border-white shadow-sm' : 'bg-[#1a1a1a] border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700'}`}
+                className={\`py-3 px-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 border \${targetType === 'comment' ? 'bg-white text-black border-white shadow-sm' : 'bg-[#1a1a1a] border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700'}\`}
               >
-                <MessageSquare className={`w-4 h-4 ${targetType === 'comment' ? 'text-black' : 'text-zinc-500'}`} />
+                <MessageSquare className={\`w-4 h-4 \${targetType === 'comment' ? 'text-black' : 'text-zinc-500'}\`} />
                 تعليق (Comment)
               </button>
             </div>
@@ -132,9 +134,9 @@ export default function ActionsPanel({ type, title, desc }: Props) {
                   key={ta.id}
                   type="button"
                   onClick={() => setTargetAccounts(ta.id as any)}
-                  className={`py-3 px-2 rounded-xl text-xs sm:text-sm font-medium transition-colors flex flex-col items-center gap-2 border ${targetAccounts === ta.id ? 'bg-white text-black border-white shadow-sm' : 'bg-[#1a1a1a] border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700'}`}
+                  className={\`py-3 px-2 rounded-xl text-xs sm:text-sm font-medium transition-colors flex flex-col items-center gap-2 border \${targetAccounts === ta.id ? 'bg-white text-black border-white shadow-sm' : 'bg-[#1a1a1a] border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700'}\`}
                 >
-                  <ta.icon className={`w-5 h-5 ${targetAccounts === ta.id ? 'text-black' : 'text-zinc-500'}`} />
+                  <ta.icon className={\`w-5 h-5 \${targetAccounts === ta.id ? 'text-black' : 'text-zinc-500'}\`} />
                   {ta.label}
                 </button>
               ))}
@@ -154,7 +156,7 @@ export default function ActionsPanel({ type, title, desc }: Props) {
                   key={rt.id}
                   type="button"
                   onClick={() => toggleReaction(rt.id)}
-                  className={`py-2 px-4 rounded-xl text-sm font-medium transition-all flex items-center gap-2 border ${selectedReactions.includes(rt.id) ? 'bg-zinc-800/80 text-white border-zinc-600 shadow-sm' : 'bg-transparent border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:border-zinc-700'}`}
+                  className={\`py-2 px-4 rounded-xl text-sm font-medium transition-all flex items-center gap-2 border \${selectedReactions.includes(rt.id) ? 'bg-zinc-800/80 text-white border-zinc-600 shadow-sm' : 'bg-transparent border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:border-zinc-700'}\`}
                 >
                   <span className="text-xl">{rt.emoji}</span>
                   <span>{rt.label}</span>
@@ -277,3 +279,7 @@ export default function ActionsPanel({ type, title, desc }: Props) {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/components/ActionsPanel.tsx', actionsPanelTsx);
+console.log('patched ActionsPanel.tsx');
