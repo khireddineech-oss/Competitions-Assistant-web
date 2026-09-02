@@ -1,4 +1,6 @@
+const fs = require('fs');
 
+const code = `
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { Loader2, Plus, Users, Terminal, Key } from 'lucide-react';
@@ -35,7 +37,7 @@ export default function AddAccounts({ onSuccess }: Props) {
     try {
       const token = localStorage.getItem('token');
       await axios.post('/api/accounts', { accounts }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: \`Bearer \${token}\` }
       });
       return true;
     } catch (e) {
@@ -48,7 +50,7 @@ export default function AddAccounts({ onSuccess }: Props) {
       const authToken = localStorage.getItem('token');
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${authToken}\` },
         body: JSON.stringify(bodyData)
       });
 
@@ -63,7 +65,7 @@ export default function AddAccounts({ onSuccess }: Props) {
         if (done) break;
         
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(Boolean);
+        const lines = chunk.split('\\n').filter(Boolean);
         
         for (const line of lines) {
           try {
@@ -71,11 +73,11 @@ export default function AddAccounts({ onSuccess }: Props) {
             if (data.type === 'account') {
               foundAccounts.push(data.data);
               setExtractedAccounts(prev => [...prev, data.data]);
-              setLogs(prev => [...prev, { type: 'success', text: `[+] تم استخراج: ${data.data.name} (${data.data.type === 'page' ? 'صفحة' : 'حساب'})` }]);
+              setLogs(prev => [...prev, { type: 'success', text: \`[+] تم استخراج: \${data.data.name} (\${data.data.type === 'page' ? 'صفحة' : 'حساب'})\` }]);
             } else if (data.type === 'error') {
-              setLogs(prev => [...prev, { type: 'error', text: `[-] ${data.message}` }]);
+              setLogs(prev => [...prev, { type: 'error', text: \`[-] \${data.message}\` }]);
             } else if (data.type === 'done') {
-              setLogs(prev => [...prev, { type: 'info', text: `[i] انتهى الفحص. تم العثور على ${foundAccounts.length} حساب/صفحة.` }]);
+              setLogs(prev => [...prev, { type: 'info', text: \`[i] انتهى الفحص. تم العثور على \${foundAccounts.length} حساب/صفحة.\` }]);
               if (foundAccounts.length > 0) {
                 setLogs(prev => [...prev, { type: 'info', text: '[i] جاري حفظ الحسابات في قاعدة البيانات...' }]);
                 const saved = await saveToServer(foundAccounts);
@@ -103,13 +105,13 @@ export default function AddAccounts({ onSuccess }: Props) {
     setLogs([]);
     setExtractedAccounts([]);
 
-    const tokenList = tokens.split('\n').map(t => t.trim()).filter(Boolean);
+    const tokenList = tokens.split('\\n').map(t => t.trim()).filter(Boolean);
     if (tokenList.length === 0) {
       setLoading(false);
       return;
     }
 
-    setLogs([{ type: 'info', text: `بدء فحص ${tokenList.length} مفتاح (Token)...` }]);
+    setLogs([{ type: 'info', text: \`بدء فحص \${tokenList.length} مفتاح (Token)...\` }]);
     await streamProcess('/api/accounts/extract', { tokens: tokenList });
   };
 
@@ -119,7 +121,7 @@ export default function AddAccounts({ onSuccess }: Props) {
     setLogs([]);
     setExtractedAccounts([]);
 
-    const lines = loginText.split('\n').map(t => t.trim()).filter(Boolean);
+    const lines = loginText.split('\\n').map(t => t.trim()).filter(Boolean);
     if (lines.length === 0) {
       setLoading(false);
       return;
@@ -134,7 +136,7 @@ export default function AddAccounts({ onSuccess }: Props) {
            credentials.push({ email: lines[i], password: lines[i+1] });
            i++; // skip password line
        } else {
-           setLogs(prev => [...prev, { type: 'error', text: `[-] تنسيق غير صالح في السطر: ${lines[i]}` }]);
+           setLogs(prev => [...prev, { type: 'error', text: \`[-] تنسيق غير صالح في السطر: \${lines[i]}\` }]);
        }
     }
 
@@ -144,7 +146,7 @@ export default function AddAccounts({ onSuccess }: Props) {
         return;
     }
 
-    setLogs([{ type: 'info', text: `بدء محاولة تسجيل الدخول لـ ${credentials.length} حساب...` }]);
+    setLogs([{ type: 'info', text: \`بدء محاولة تسجيل الدخول لـ \${credentials.length} حساب...\` }]);
     await streamProcess('/api/accounts/login-extract', { credentials });
   };
 
@@ -173,19 +175,19 @@ export default function AddAccounts({ onSuccess }: Props) {
       <div className="flex flex-col sm:flex-row bg-[#111] border border-zinc-800 rounded-xl p-1 gap-1">
         <button
           onClick={() => setActiveTab('bulk')}
-          className={`flex-1 py-3 px-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${activeTab === 'bulk' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
+          className={\`flex-1 py-3 px-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 \${activeTab === 'bulk' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}\`}
         >
           <Users className="w-4 h-4" /> إضافة بالتوكن (Tokens)
         </button>
         <button
           onClick={() => setActiveTab('login')}
-          className={`flex-1 py-3 px-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${activeTab === 'login' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
+          className={\`flex-1 py-3 px-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 \${activeTab === 'login' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}\`}
         >
           <Key className="w-4 h-4" /> تسجيل دخول (Email/Pass)
         </button>
         <button
           onClick={() => setActiveTab('manual')}
-          className={`flex-1 py-3 px-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${activeTab === 'manual' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
+          className={\`flex-1 py-3 px-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 \${activeTab === 'manual' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}\`}
         >
           <Plus className="w-4 h-4" /> إضافة يدوية مخصصة
         </button>
@@ -326,11 +328,11 @@ export default function AddAccounts({ onSuccess }: Props) {
             </div>
             <div className="p-4 flex-1 overflow-y-auto font-mono text-xs sm:text-sm space-y-2 custom-scrollbar">
               {logs.map((log, i) => (
-                <div key={i} className={`
-                  ${log.type === 'info' ? 'text-blue-400' : ''}
-                  ${log.type === 'success' ? 'text-green-400' : ''}
-                  ${log.type === 'error' ? 'text-red-400' : ''}
-                `}>
+                <div key={i} className={\`
+                  \${log.type === 'info' ? 'text-blue-400' : ''}
+                  \${log.type === 'success' ? 'text-green-400' : ''}
+                  \${log.type === 'error' ? 'text-red-400' : ''}
+                \`}>
                   {log.text}
                 </div>
               ))}
@@ -353,3 +355,7 @@ export default function AddAccounts({ onSuccess }: Props) {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/components/AddAccounts.tsx', code);
+console.log('Frontend login route patched');
