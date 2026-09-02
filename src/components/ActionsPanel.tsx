@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { Loader2, PlayCircle, Users, FileText, CheckCircle2, MessageSquare, LayoutTemplate } from 'lucide-react';
+import { Loader2, PlayCircle, Users, FileText, CheckCircle2, MessageSquare, LayoutTemplate, Terminal } from 'lucide-react';
 
 interface Props {
   type: 'react' | 'unreact' | 'follow' | 'comment' | 'confirm';
@@ -27,8 +27,16 @@ export default function ActionsPanel({ type, title, desc }: Props) {
   const [selectedReactions, setSelectedReactions] = useState<string[]>(['LIKE']);
   const [comments, setComments] = useState('');
   const [isRandom, setIsRandom] = useState(false);
+  
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [summary, setSummary] = useState<{ok: number, fail: number} | null>(null);
+  const [logs, setLogs] = useState<{name?: string, success?: boolean, message?: string, reaction?: string, raw?: string}[]>([]);
+  
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   const toggleReaction = (id: string) => {
     setSelectedReactions(prev => 
@@ -41,15 +49,11 @@ export default function ActionsPanel({ type, title, desc }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setResult(null);
+    setSummary(null);
+    setLogs([]);
 
     const payload: any = { url: target, targetAccounts, count };
-    
-    // Only react, unreact, and comment endpoints accept targetType for extracting IDs
-    if (type !== 'confirm' && type !== 'follow') {
-      payload.targetType = targetType;
-    }
-
+    if (type !== 'confirm' && type !== 'follow') payload.targetType = targetType;
     if (type === 'react') payload.reactions = selectedReactions;
     if (type === 'comment') {
       payload.words = comments.split('\n').filter(c => c.trim());
@@ -57,10 +61,42 @@ export default function ActionsPanel({ type, title, desc }: Props) {
     }
 
     try {
-      const res = await axios.post(`/api/action/${type}`, payload);
-      setResult(res.data);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/action/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.body) throw new Error('No response body');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(Boolean);
+        
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'progress') {
+              setLogs(prev => [...prev, data.data]);
+            } else if (data.type === 'done') {
+              setSummary(data.summary);
+            } else if (data.type === 'error') {
+              setLogs(prev => [...prev, { raw: `[ERROR] ${data.message || 'حدث خطأ'}` }]);
+            }
+          } catch(e) {
+            console.error('Failed to parse JSONL chunk', e);
+          }
+        }
+      }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'حدث خطأ. تأكد من صحة الرابط وأن لديك حسابات متصلة.');
+      alert('حدث خطأ في الاتصال بالخادم.');
     } finally {
       setLoading(false);
     }
@@ -76,8 +112,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-[#111] border border-zinc-800 p-6 md:p-8 rounded-2xl shadow-sm space-y-8">
-        
-        {/* Target Link */}
         {type !== 'confirm' && (
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">رابط الهدف أو معرفه (Link / ID)</label>
@@ -93,7 +127,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
           </div>
         )}
 
-        {/* Target Type Selector (Post vs Comment) */}
         {(type === 'react' || type === 'unreact' || type === 'comment') && (
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-3">هل الرابط المستهدف هو لمنشور أم لتعليق؟</label>
@@ -118,7 +151,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
           </div>
         )}
 
-        {/* Target Accounts Type */}
         {type !== 'confirm' && (
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-3">نوع الحسابات المستخدمة في العملية</label>
@@ -142,7 +174,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
           </div>
         )}
 
-        {/* Reaction Picker */}
         {type === 'react' && (
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-3">
@@ -164,7 +195,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
           </div>
         )}
 
-        {/* Comments Input */}
         {type === 'comment' && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -179,7 +209,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
                 توليد تعليقات عشوائية (حروف وأرقام)
               </label>
             </div>
-
             {!isRandom && (
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">التعليقات المجدولة (تعليق في كل سطر)</label>
@@ -195,7 +224,6 @@ export default function ActionsPanel({ type, title, desc }: Props) {
           </div>
         )}
 
-        {/* Count Input */}
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-2">العدد المطلوب</label>
           <div className="flex gap-3 items-center">
@@ -234,44 +262,44 @@ export default function ActionsPanel({ type, title, desc }: Props) {
         </button>
       </form>
 
-      {/* Results */}
-      {result && (
-        <div className="mt-8 bg-[#111] border border-zinc-800/80 p-6 rounded-xl shadow-sm">
-          <h3 className="font-medium text-white mb-6 text-sm">التقرير النهائي للعملية</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-[#1a1a1a] border border-zinc-800 p-4 rounded-xl text-center">
-              <span className="block text-2xl font-medium text-white">{result.ok + result.fail || 0}</span>
-              <span className="text-xs text-zinc-500 mt-1 block">إجمالي المحاولات</span>
+      {/* Terminal Results */}
+      {(logs.length > 0 || loading || summary) && (
+        <div className="mt-8 bg-black border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
+          <div className="bg-[#1a1a1a] px-4 py-3 flex justify-between items-center border-b border-zinc-800">
+            <div className="flex items-center gap-2 text-zinc-400 text-sm font-medium">
+              <Terminal className="w-4 h-4" />
+              مراقب العمليات المباشر (Real-time Log)
             </div>
-            <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-xl text-center">
-              <span className="block text-2xl font-medium text-green-400">{result.ok || 0}</span>
-              <span className="text-xs text-green-500 mt-1 block">عملية ناجحة</span>
-            </div>
-            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-center">
-              <span className="block text-2xl font-medium text-red-400">{result.fail || 0}</span>
-              <span className="text-xs text-red-500 mt-1 block">فشل</span>
-            </div>
+            {summary && (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-green-400 font-mono">نجاح: {summary.ok}</span>
+                <span className="text-red-400 font-mono">فشل: {summary.fail}</span>
+              </div>
+            )}
           </div>
-
-          {/* Details */}
-          {result.results && result.results.length > 0 && (
-            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-              {result.results.map((r: any, i: number) => (
-                <div key={i} className="flex justify-between items-center bg-[#1a1a1a] border border-zinc-800/50 p-3 rounded-lg text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="text-white">{r.name}</span>
-                    {r.reaction && <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">{r.reaction}</span>}
-                    {r.message && <span className="text-xs text-zinc-400 truncate max-w-[150px]">{r.message}</span>}
-                  </div>
-                  {r.success ? (
-                    <span className="text-green-400 text-xs font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> ناجح</span>
-                  ) : (
-                    <span className="text-red-400 text-xs font-medium">فشل</span>
+          <div className="p-4 h-64 overflow-y-auto font-mono text-xs sm:text-sm space-y-1.5 custom-scrollbar">
+            {logs.map((log, i) => (
+              <div key={i} className={`${log.raw ? 'text-zinc-500' : log.success ? 'text-green-400' : 'text-red-400'} flex gap-3`}>
+                <span className="text-zinc-600 select-none">[{new Date().toLocaleTimeString()}]</span>
+                <span>
+                  {log.raw ? log.raw : (
+                    <>
+                      {log.success ? '[+]' : '[-]'} {log.name} 
+                      {log.reaction ? ` (تفاعل: ${log.reaction})` : ''} 
+                      {log.message ? ` - ${log.message}` : ''}
+                    </>
                   )}
-                </div>
-              ))}
-            </div>
-          )}
+                </span>
+              </div>
+            ))}
+            {loading && (
+              <div className="text-zinc-500 flex gap-3 animate-pulse">
+                <span>[{new Date().toLocaleTimeString()}]</span>
+                <span>[~] جاري الاتصال ومعالجة الحساب التالي...</span>
+              </div>
+            )}
+            <div ref={logsEndRef} />
+          </div>
         </div>
       )}
     </div>

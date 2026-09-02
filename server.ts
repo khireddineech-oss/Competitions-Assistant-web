@@ -300,6 +300,35 @@ apiRouter.delete('/accounts', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+
+apiRouter.post('/accounts/extract', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'application/jsonl');
+  
+  const { tokens } = req.body;
+  if (!Array.isArray(tokens)) return res.end();
+
+  for (const t of tokens) {
+    try {
+      const meRes = await axios.get(`https://graph.facebook.com/me?access_token=${t}`);
+      const personalId = meRes.data.id;
+      res.write(JSON.stringify({ type: 'account', data: { id: personalId, name: meRes.data.name, token: t, type: 'account', parentId: personalId } }) + '\n');
+      
+      try {
+        const pagesRes = await axios.get(`https://graph.facebook.com/me/accounts?access_token=${t}`);
+        if (pagesRes.data && pagesRes.data.data) {
+          for (const p of pagesRes.data.data) {
+            res.write(JSON.stringify({ type: 'account', data: { id: p.id, name: p.name, token: p.access_token, type: 'page', parentId: personalId } }) + '\n');
+          }
+        }
+      } catch(e) {}
+    } catch(err) {
+      res.write(JSON.stringify({ type: 'error', message: `فشل الاتصال بالمفتاح: ${t.substring(0, 15)}...` }) + '\n');
+    }
+  }
+  res.write(JSON.stringify({ type: 'done' }) + '\n');
+  res.end();
+});
+
 apiRouter.post('/accounts/share', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { targetUsername } = req.body;
@@ -409,11 +438,14 @@ async function makeFbReq(url: string, method: string, data: any, token: string) 
   }
 }
 
+
+// --- REALTIME ACTION ROUTES ---
 apiRouter.post('/action/react', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'application/jsonl');
   try {
     const { url, reactions, targetAccounts, count, targetType } = req.body;
-    const target = extractId(url, targetType);
-    if (!target) return res.status(400).json({ error: 'Invalid URL' });
+    const target = extractId(url, targetType || 'post');
+    if (!target) { res.write(JSON.stringify({ type: 'error', message: 'Invalid URL' }) + '\n'); return res.end(); }
     
     let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
     if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
@@ -421,69 +453,70 @@ apiRouter.post('/action/react', requireAuth, async (req: AuthRequest, res) => {
     if (count && count !== 'all') accs = accs.slice(0, parseInt(count, 10));
 
     let ok = 0, fail = 0;
-    const results = [];
     for (const a of accs) {
       if (!a.token) continue;
       const accToken = decryptToken(a.token);
       const reaction = reactions[Math.floor(Math.random() * reactions.length)];
       const r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/reactions`, "POST", { type: reaction }, accToken);
       if (r && !r.error) {
-        ok++; results.push({ name: a.name, reaction, success: true });
+        ok++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, reaction, success: true, message: 'تم التفاعل' } }) + '\n');
       } else {
-        fail++; results.push({ name: a.name, success: false });
+        fail++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: false, message: r.details?.error?.message } }) + '\n');
       }
       await pause();
     }
-    res.json({ success: true, ok, fail, results });
+    res.write(JSON.stringify({ type: 'done', summary: { ok, fail } }) + '\n');
   } catch (err) {
-    res.status(500).json({ error: 'Action failed' });
+    res.write(JSON.stringify({ type: 'error' }) + '\n');
   }
+  res.end();
 });
 
 apiRouter.post('/action/unreact', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'application/jsonl');
   try {
     const { url, targetAccounts, targetType } = req.body;
-    const target = extractId(url, targetType);
-    if (!target) return res.status(400).json({ error: 'Invalid URL' });
+    const target = extractId(url, targetType || 'post');
+    if (!target) { res.write(JSON.stringify({ type: 'error', message: 'Invalid URL' }) + '\n'); return res.end(); }
     
     let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
     if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
     if (targetAccounts === 'pages') accs = accs.filter(a => a.type === 'page');
 
     let ok = 0, fail = 0;
-    const results = [];
     for (const a of accs) {
       if (!a.token) continue;
       const accToken = decryptToken(a.token);
       const r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/likes`, "DELETE", {}, accToken);
       if (r && !r.error) {
-        ok++; results.push({ name: a.name, success: true });
+        ok++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: true, message: 'تم الإزالة' } }) + '\n');
       } else {
-        fail++; results.push({ name: a.name, success: false });
+        fail++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: false, message: r.details?.error?.message } }) + '\n');
       }
       await pause();
     }
-    res.json({ success: true, ok, fail, results });
+    res.write(JSON.stringify({ type: 'done', summary: { ok, fail } }) + '\n');
   } catch (err) {
-    res.status(500).json({ error: 'Action failed' });
+    res.write(JSON.stringify({ type: 'error' }) + '\n');
   }
+  res.end();
 });
 
 apiRouter.post('/action/comment', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'application/jsonl');
   try {
     const { url, words, count, isRandom, targetAccounts, targetType } = req.body;
-    const target = extractId(url, targetType);
-    if (!target) return res.status(400).json({ error: 'Invalid URL' });
+    const target = extractId(url, targetType || 'post');
+    if (!target) { res.write(JSON.stringify({ type: 'error', message: 'Invalid URL' }) + '\n'); return res.end(); }
     
     let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
     if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
     if (targetAccounts === 'pages') accs = accs.filter(a => a.type === 'page');
 
-    if (accs.length === 0) return res.status(400).json({ error: 'No accounts available' });
+    if (accs.length === 0) { res.write(JSON.stringify({ type: 'error', message: 'No accounts' }) + '\n'); return res.end(); }
 
     let ok = 0, fail = 0;
-    const results = [];
-    const loopCount = parseInt(count, 10);
+    const loopCount = count === 'all' ? accs.length : parseInt(count, 10);
     
     const commentWords = isRandom ? Array.from({length: loopCount}, () => 
       Array.from({length: 8}, () => "ضصثقفغعهخحجدشسيبلاتنمكطئءؤرلاىةوزظ".charAt(Math.floor(Math.random() * 34))).join('')
@@ -497,41 +530,30 @@ apiRouter.post('/action/comment', requireAuth, async (req: AuthRequest, res) => 
       
       const r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/comments`, "POST", { message }, accToken);
       if (r && !r.error) {
-        ok++; results.push({ name: a.name, success: true, message });
+        ok++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: true, message } }) + '\n');
       } else {
-        fail++; results.push({ name: a.name, success: false, message });
+        fail++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: false, message: r.details?.error?.message } }) + '\n');
       }
       await pause();
     }
-    res.json({ success: true, ok, fail, results });
+    res.write(JSON.stringify({ type: 'done', summary: { ok, fail } }) + '\n');
   } catch (err) {
-    res.status(500).json({ error: 'Action failed' });
+    res.write(JSON.stringify({ type: 'error' }) + '\n');
   }
+  res.end();
 });
 
-// Mount the API router
-
-// --- Settings Routes ---
-
 apiRouter.post('/action/confirm', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'application/jsonl');
   try {
     const { targetAccounts, count } = req.body;
-    
     let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1 AND type = $2', [req.user!.id, 'account']);
     if (count && count !== 'all') accs = accs.slice(0, parseInt(count, 10));
 
     let ok = 0, fail = 0;
-    const results = [];
-    
     for (const a of accs) {
       if (!a.token) continue;
       const accToken = decryptToken(a.token);
-      
-      // Usually confirming friend requests involves fetching pending requests then accepting them
-      // Or if a target URL is provided, accepting that specific user.
-      // But for bulk confirmations, it's typically fetching requests.
-      // Since we don't have a specific target in confirm tab (as per ActionsPanel UI type !== 'confirm'),
-      // we assume bulk confirm friend requests.
       const r = await makeFbReq(`https://graph.facebook.com/v19.0/me/friendrequests`, "GET", {}, accToken);
       if (r && r.data && Array.isArray(r.data)) {
         let accepted = 0;
@@ -539,23 +561,25 @@ apiRouter.post('/action/confirm', requireAuth, async (req: AuthRequest, res) => 
            const acceptRes = await makeFbReq(`https://graph.facebook.com/v19.0/me/friends/${req.from.id}`, "POST", {}, accToken);
            if (acceptRes && !acceptRes.error) accepted++;
         }
-        ok++; results.push({ name: a.name, success: true, message: `تم تأكيد ${accepted} طلب` });
+        ok++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: true, message: `تم تأكيد ${accepted} طلب` } }) + '\n');
       } else {
-        fail++; results.push({ name: a.name, success: false });
+        fail++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: false, message: 'لا توجد طلبات' } }) + '\n');
       }
       await pause();
     }
-    res.json({ success: true, ok, fail, results });
+    res.write(JSON.stringify({ type: 'done', summary: { ok, fail } }) + '\n');
   } catch (err) {
-    res.status(500).json({ error: 'Action failed' });
+    res.write(JSON.stringify({ type: 'error' }) + '\n');
   }
+  res.end();
 });
 
 apiRouter.post('/action/follow', requireAuth, async (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'application/jsonl');
   try {
     const { url, targetAccounts, count } = req.body;
-    const target = extractId(url, 'post'); // Usually following a page/user ID
-    if (!target) return res.status(400).json({ error: 'Invalid URL or ID' });
+    const target = extractId(url, 'post');
+    if (!target) { res.write(JSON.stringify({ type: 'error', message: 'Invalid URL' }) + '\n'); return res.end(); }
     
     let { rows: accs } = await pool.query('SELECT * FROM accounts WHERE user_id = $1', [req.user!.id]);
     if (targetAccounts === 'personal') accs = accs.filter(a => a.type !== 'page');
@@ -563,30 +587,26 @@ apiRouter.post('/action/follow', requireAuth, async (req: AuthRequest, res) => {
     if (count && count !== 'all') accs = accs.slice(0, parseInt(count, 10));
 
     let ok = 0, fail = 0;
-    const results = [];
     for (const a of accs) {
       if (!a.token) continue;
       const accToken = decryptToken(a.token);
-      // For following, often it's POST /{target}/subscribers or POST /me/likes?page_id={target}
-      // We will try subscribers first (works for users), then fallback to likes (works for pages)
       let r = await makeFbReq(`https://graph.facebook.com/v19.0/${target}/subscribers`, "POST", {}, accToken);
       if (r && r.error) {
          r = await makeFbReq(`https://graph.facebook.com/v19.0/me/likes`, "POST", { page_id: target }, accToken);
       }
-      
       if (r && !r.error) {
-        ok++; results.push({ name: a.name, success: true });
+        ok++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: true, message: 'تمت المتابعة' } }) + '\n');
       } else {
-        fail++; results.push({ name: a.name, success: false });
+        fail++; res.write(JSON.stringify({ type: 'progress', data: { name: a.name, success: false, message: r.details?.error?.message } }) + '\n');
       }
       await pause();
     }
-    res.json({ success: true, ok, fail, results });
+    res.write(JSON.stringify({ type: 'done', summary: { ok, fail } }) + '\n');
   } catch (err) {
-    res.status(500).json({ error: 'Action failed' });
+    res.write(JSON.stringify({ type: 'error' }) + '\n');
   }
+  res.end();
 });
-
 apiRouter.get('/settings', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM settings');
